@@ -1,0 +1,29 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "lint: gosec",
+            "type": "shell",
+            "command": "gosec -fmt golint ./...",
+            "problemMatcher": {
+                "owner": "gosec",
+                "source": "gosec",
+                "fileLocation": "absolute",
+                "pattern": {
+                    "regexp": "^(.+\\.go):(\\d+):(\\d+):\\s+\\[CWE-\\d+\\]\\s+(.+)\\s+\\(Rule:(G\\d+),\\s*Severity:(HIGH|MEDIUM|LOW)",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "message": 4,
+                    "code": 5,
+                    "severity": 6
+                },
+                "severity": "warning"
+            },
+            "presentation": {
+                "reveal": "silent",
+                "panel": "shared"
+            }
+        }
+    ]
+}

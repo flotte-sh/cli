@@ -1,0 +1,8 @@
+Package: flotte
+Version: {{VERSION}}
+Section: base
+Priority: optional
+Architecture: {{ARCH}}
+Depends: 
+Maintainer: flotte.sh <hello@flotte.sh>
+Description: CLI for flotte.sh to manage SSH certificates and access.

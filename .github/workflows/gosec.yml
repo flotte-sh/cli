@@ -1,0 +1,30 @@
+name: Gosec
+
+on:
+    workflow_dispatch:
+    pull_request:
+    push:
+
+permissions:
+    contents: read
+
+jobs:
+    gosec:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Set up Go
+              uses: actions/setup-go@v7
+              with:
+                  go-version-file: go.mod
+
+            - name: Install gosec
+              run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+            - name: Run gosec
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  "$(go env GOPATH)/bin/gosec" -fmt golint ./...
