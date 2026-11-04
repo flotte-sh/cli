@@ -1,9 +1,11 @@
 name: Publish APT repo to GitHub Pages
 
 on:
-    push:
-        tags:
-            - "v*"
+    # APT publishing is disabled for now. To re-enable, restore the trigger:
+    #   push:
+    #       tags:
+    #           - "v*"
+    workflow_dispatch:
 
 permissions:
     contents: read
@@ -12,7 +14,8 @@ permissions:
 
 jobs:
     build:
-        if: github.ref_protected == true
+        # APT publishing is disabled for now. To re-enable, restore: if: github.ref_protected == true
+        if: false
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
