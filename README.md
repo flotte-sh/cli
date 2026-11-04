@@ -1,7 +1,14 @@
+<div align="center">
+
 # Flotte CLI
 
-The Flotte CLI connects to your Flotte server to manage SSH access with short-lived certificates.
-Learn how to host a Flotte server for free at [docs.flotte.sh](https://docs.flotte.sh).
+**Manage SSH access with short-lived certificates through your Flotte server.**
+
+[Documentation](https://docs.flotte.sh) · [Install](#install) · [Quick Start](#quick-start) · [SSH Integration](#ssh-integration)
+
+</div>
+
+New to Flotte? Learn how to host a server for free at [docs.flotte.sh](https://docs.flotte.sh).
 
 ## Install
 
@@ -59,26 +66,11 @@ authentication flow, credential lifetime, and troubleshooting.
 `flotte uninstall` keeps the binary, account configuration, SSH keys, and
 unrelated SSH settings. Restart your shell after removing completions.
 
-## Development
+## Requesting an Integration
 
-Run from the CLI repository:
-
-```sh
-go build -o bin/flotte ./cmd/flotte
-go test ./...
-```
-
-Keyboard-selection tests set `TERM=xterm-256color` locally so CI's `TERM=dumb`
-does not switch Huh to numeric accessibility prompts.
-
-To test native OpenSSH integration:
-
-```sh
-FLOTTE_TEST_OPENSSH=1 go test ./internal/commands -run TestNativeOpenSSHIntegration -v
-```
-
-On PowerShell, set `$env:FLOTTE_TEST_OPENSSH='1'` first. Windows integration
-requires runtime testing on Windows; cross-compilation alone is insufficient.
+Need Flotte to work with another SSH client or tool? Check the
+[integration overview](https://docs.flotte.sh/integrations/) first, then
+[open an integration request](https://github.com/flotte-sh/cli/issues/new?template=integration_request.md).
 
 ## Security and License
 
