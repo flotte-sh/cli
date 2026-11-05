@@ -1,0 +1,79 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+permissions:
+    contents: read
+
+jobs:
+    ci:
+        name: CI
+        uses: ./.github/workflows/ci.yml
+
+    build:
+        name: Build release bundle
+        needs:
+            - ci
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Set up Go
+              uses: actions/setup-go@v7
+              with:
+                  go-version-file: go.mod
+
+            - name: Set up just
+              uses: extractions/setup-just@v4
+
+            - name: Build release bundle
+              env:
+                  FLOTTE_VERSION: ${{ github.ref_name }}
+              run: just release-bundle
+
+            - name: Upload release bundle
+              uses: actions/upload-artifact@v7
+              with:
+                  name: release-bundle
+                  if-no-files-found: error
+                  path: |
+                      dist/*.tar.gz
+                      dist/*.tar.gz.sha256
+                      dist/*.zip
+                      dist/*.zip.sha256
+
+    github:
+        name: GitHub release
+        needs:
+            - build
+        permissions:
+            contents: write
+        uses: ./.github/workflows/release-github.yml
+
+    apt:
+        name: APT repo
+        # Tags must be protected: this publishes signed packages to users.
+        if: github.ref_protected
+        needs:
+            - github
+        permissions:
+            contents: read
+            pages: write
+            id-token: write
+        uses: ./.github/workflows/release-apt.yml
+        secrets:
+            GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+
+    winget:
+        name: WinGet
+        # Set this repo variable to true after the first winget-pkgs PR has merged.
+        if: vars.WINGET_ENABLED == 'true'
+        needs:
+            - github
+        uses: ./.github/workflows/release-winget.yml
+        secrets:
+            WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}

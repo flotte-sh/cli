@@ -1,37 +1,50 @@
 name: Publish APT repo to GitHub Pages
 
+# Called by release.yml after tests pass and the release is published, so it packages
+# the same binaries that were attached to the release.
 on:
-    # APT publishing is disabled for now. To re-enable, restore the trigger:
-    #   push:
-    #       tags:
-    #           - "v*"
-    workflow_dispatch:
+    workflow_call:
+        secrets:
+            GPG_PRIVATE_KEY:
+                required: true
 
 permissions:
     contents: read
     pages: write
     id-token: write
 
+concurrency:
+    group: apt-pages
+    cancel-in-progress: false
+
 jobs:
     build:
-        # APT publishing is disabled for now. To re-enable, restore: if: github.ref_protected == true
-        if: false
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
               uses: actions/checkout@v7
 
-            - name: Set up Go
-              uses: actions/setup-go@v7
+            - name: Download release bundle
+              uses: actions/download-artifact@v8
               with:
-                  go-version-file: go.mod
+                  name: release-bundle
+                  path: dist
 
-            - name: Set up just
-              uses: extractions/setup-just@v4
+            - name: Unpack Linux binaries
+              shell: bash
+              working-directory: dist
+              run: |
+                  set -euo pipefail
+                  for arch in amd64 arm64; do
+                    sha256sum -c "flotte_linux_${arch}.tar.gz.sha256"
+                    tar -xzf "flotte_linux_${arch}.tar.gz"
+                  done
 
             - name: Install packaging tools
               run: sudo apt-get update && sudo apt-get install -y dpkg-dev gnupg
 
+            # The private key is imported only after everything above has run,
+            # and removed before anything is uploaded.
             - name: Import GPG signing key
               shell: bash
               env:
@@ -42,20 +55,22 @@ jobs:
                   fingerprint=$(gpg --list-keys --with-colons | awk -F: '/^fpr:/ { print $10; exit }')
                   echo "${fingerprint}:6:" | gpg --import-ownertrust
 
-            - name: Build binaries
-              shell: bash
-              env:
-                  FLOTTE_VERSION: ${{ github.ref_name }}
-                  FLOTTE_PLATFORMS: linux/amd64 linux/arm64
-              run: just build-all
-
             - name: Build signed APT repo
               shell: bash
               env:
                   GPG_SIGN: "true"
+              run: bash .github/apt-config/build.sh public "${GITHUB_REF_NAME#v}"
+
+            - name: Remove GPG signing key
+              if: always()
+              shell: bash
               run: |
-                  set -euo pipefail
-                  bash .github/apt-config/build.sh public "${GITHUB_REF_NAME#v}"
+                  gpgconf --kill all || true
+                  rm -rf "$HOME/.gnupg"
+
+            - name: Verify APT repo
+              shell: bash
+              run: bash .github/apt-config/verify.sh public "${GITHUB_REF_NAME#v}"
 
             - name: Configure Pages
               uses: actions/configure-pages@v6

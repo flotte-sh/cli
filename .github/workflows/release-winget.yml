@@ -1,0 +1,23 @@
+name: Submit to WinGet
+
+on:
+    workflow_call:
+        secrets:
+            WINGET_TOKEN:
+                required: true
+
+permissions:
+    contents: read
+
+jobs:
+    winget:
+        name: Submit to WinGet
+        runs-on: ubuntu-latest
+        steps:
+            - name: Open winget-pkgs pull request
+              uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
+              with:
+                  identifier: Flotte.CLI
+                  release-tag: ${{ github.ref_name }}
+                  installers-regex: 'flotte_windows_(amd64|arm64)\.zip$'
+                  token: ${{ secrets.WINGET_TOKEN }}

@@ -1,0 +1,47 @@
+name: Publish GitHub release
+
+# Immutable releases lock assets once published, so upload everything to a draft
+# and publish it only after confirming that all assets are attached.
+on:
+    workflow_call:
+
+permissions:
+    contents: write
+
+jobs:
+    release:
+        name: Publish GitHub release
+        runs-on: ubuntu-latest
+        steps:
+            - name: Download release bundle
+              uses: actions/download-artifact@v8
+              with:
+                  name: release-bundle
+                  path: artifacts
+
+            - name: Upload assets to draft release
+              uses: softprops/action-gh-release@v3
+              with:
+                  tag_name: ${{ github.ref_name }}
+                  draft: true
+                  generate_release_notes: true
+                  fail_on_unmatched_files: true
+                  files: artifacts/*
+
+            - name: Publish release
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  TAG: ${{ github.ref_name }}
+              run: |
+                  set -euo pipefail
+
+                  expected="$(find artifacts -maxdepth 1 -type f | wc -l)"
+                  actual="$(gh release view "$TAG" --json assets --jq '.assets | length')"
+                  if [ "$expected" -eq 0 ] || [ "$expected" -ne "$actual" ]; then
+                    echo "Expected $expected assets on the draft, found $actual"
+                    exit 1
+                  fi
+
+                  gh release edit "$TAG" --draft=false

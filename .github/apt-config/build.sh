@@ -41,15 +41,14 @@ for arch in $ARCHITECTURES; do
 		exit 4
 	fi
 
-	mkdir -p "$package_root/DEBIAN" "$package_root/usr/local/bin"
+	mkdir -p "$package_root/DEBIAN" "$package_root/usr/bin"
 	sed "s/{{VERSION}}/$VERSION/g; s/{{ARCH}}/$arch/g" .github/apt-config/package.template > "$package_root/DEBIAN/control"
-	install -m 0755 "$binary_path" "$package_root/usr/local/bin/$BINARY"
-	dpkg-deb --build "$package_root" "$deb_file"
+	install -m 0755 "$binary_path" "$package_root/usr/bin/$BINARY"
+	dpkg-deb --root-owner-group --build "$package_root" "$deb_file"
 	cp "$deb_file" "$POOL_DIR/"
 	rm -rf "$package_root"
 done
 
-MD5_ENTRIES=""
 SHA256_ENTRIES=""
 
 for arch in $ARCHITECTURES; do
@@ -59,23 +58,19 @@ for arch in $ARCHITECTURES; do
 	(cd "$OUT_DIR" && dpkg-scanpackages --arch "$arch" pool /dev/null > "dists/stable/main/binary-$arch/Packages")
 	gzip -9c "$binary_dir/Packages" > "$binary_dir/Packages.gz"
 
-	MD5_ENTRIES+="$(entry md5sum "$binary_dir/Packages" "main/binary-$arch/Packages")"
-	MD5_ENTRIES+="$(entry md5sum "$binary_dir/Packages.gz" "main/binary-$arch/Packages.gz")"
-	SHA256_ENTRIES+="$(entry sha256sum "$binary_dir/Packages" "main/binary-$arch/Packages")"
-	SHA256_ENTRIES+="$(entry sha256sum "$binary_dir/Packages.gz" "main/binary-$arch/Packages.gz")"
+	SHA256_ENTRIES+="$(entry sha256sum "$binary_dir/Packages" "main/binary-$arch/Packages")"$'\n'
+	SHA256_ENTRIES+="$(entry sha256sum "$binary_dir/Packages.gz" "main/binary-$arch/Packages.gz")"$'\n'
 done
 
 {
-	echo "Origin: GitHub Pages"
-	echo "Label: GitHub Pages APT Repo"
+	echo "Origin: Flotte"
+	echo "Label: Flotte"
 	echo "Suite: stable"
 	echo "Codename: stable"
 	echo "Architectures: $ARCHITECTURES"
 	echo "Components: main"
 	echo "Description: Flotte CLI APT repository"
 	echo "Date: $(date -Ru)"
-	echo "MD5Sum:"
-	printf "%s" "$MD5_ENTRIES"
 	echo "SHA256:"
 	printf "%s" "$SHA256_ENTRIES"
 } > "$RELEASE_DIR/Release"
@@ -86,8 +81,8 @@ if [[ "${GPG_SIGN:-false}" == "true" ]]; then
 		exit 3
 	fi
 
-	gpg --batch --yes --armor --clearsign --output "$RELEASE_DIR/InRelease" "$RELEASE_DIR/Release"
-	gpg --batch --yes --armor --detach-sign --output "$RELEASE_DIR/Release.gpg" "$RELEASE_DIR/Release"
+	gpg --batch --yes --digest-algo SHA512 --armor --clearsign --output "$RELEASE_DIR/InRelease" "$RELEASE_DIR/Release"
+	gpg --batch --yes --digest-algo SHA512 --armor --detach-sign --output "$RELEASE_DIR/Release.gpg" "$RELEASE_DIR/Release"
 	gpg --batch --yes --armor --export > "$OUT_DIR/signing-key.asc"
 	gpg --batch --yes --export > "$OUT_DIR/signing-key.gpg"
 fi

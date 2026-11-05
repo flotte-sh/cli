@@ -3,16 +3,14 @@ name: CI
 on:
     workflow_dispatch:
     pull_request:
-    push:
-        tags:
-            - "v*.*.*"
+    workflow_call:
 
 permissions:
     contents: read
 
 jobs:
-    build-test-package:
-        name: Build, Test, and Package
+    check:
+        name: Format, Lint, Test, and Build
         runs-on: ubuntu-latest
         steps:
             - name: Checkout
@@ -26,10 +24,7 @@ jobs:
             - name: Set up just
               uses: extractions/setup-just@v4
 
-            - name: Run tests
-              run: just test
-
-            - name: Run linters
+            - name: Check formatting
               shell: bash
               run: |
                   set -euo pipefail
@@ -41,74 +36,16 @@ jobs:
                     exit 1
                   fi
 
+            - name: Run linters
+              shell: bash
+              run: |
+                  set -euo pipefail
+
                   go install honnef.co/go/tools/cmd/staticcheck@ff63afafc529279f454e02f1d060210bd4263951
                   just lint
 
-            - name: Build release bundle
-              shell: bash
-              env:
-                  FLOTTE_VERSION: ${{ github.ref_name }}
-              run: just release-bundle
+            - name: Run tests
+              run: just test
 
-            - name: Upload release bundle
-              uses: actions/upload-artifact@v7
-              if: github.ref_type == 'tag'
-              with:
-                  name: release-bundle
-                  if-no-files-found: error
-                  path: |
-                      dist/flotte_linux_amd64.tar.gz
-                      dist/flotte_linux_amd64.tar.gz.sha256
-                      dist/flotte_linux_arm64.tar.gz
-                      dist/flotte_linux_arm64.tar.gz.sha256
-                      dist/flotte_linux_arm.tar.gz
-                      dist/flotte_linux_arm.tar.gz.sha256
-                      dist/flotte_linux_386.tar.gz
-                      dist/flotte_linux_386.tar.gz.sha256
-                      dist/flotte_darwin_amd64.tar.gz
-                      dist/flotte_darwin_amd64.tar.gz.sha256
-                      dist/flotte_darwin_arm64.tar.gz
-                      dist/flotte_darwin_arm64.tar.gz.sha256
-                      dist/flotte_windows_amd64.zip
-                      dist/flotte_windows_amd64.zip.sha256
-                      dist/flotte_windows_arm64.zip
-                      dist/flotte_windows_arm64.zip.sha256
-
-    release:
-        name: Publish GitHub release
-        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        needs:
-            - build-test-package
-        runs-on: ubuntu-latest
-        permissions:
-            contents: write
-        steps:
-            - name: Download release bundle
-              uses: actions/download-artifact@v8
-              with:
-                  name: release-bundle
-                  path: artifacts/release-bundle
-
-            - name: Publish release
-              uses: softprops/action-gh-release@v3
-              with:
-                  tag_name: ${{ github.ref_name }}
-                  generate_release_notes: true
-                  fail_on_unmatched_files: true
-                  files: |
-                      artifacts/release-bundle/flotte_linux_amd64.tar.gz
-                      artifacts/release-bundle/flotte_linux_amd64.tar.gz.sha256
-                      artifacts/release-bundle/flotte_linux_arm64.tar.gz
-                      artifacts/release-bundle/flotte_linux_arm64.tar.gz.sha256
-                      artifacts/release-bundle/flotte_linux_arm.tar.gz
-                      artifacts/release-bundle/flotte_linux_arm.tar.gz.sha256
-                      artifacts/release-bundle/flotte_linux_386.tar.gz
-                      artifacts/release-bundle/flotte_linux_386.tar.gz.sha256
-                      artifacts/release-bundle/flotte_darwin_amd64.tar.gz
-                      artifacts/release-bundle/flotte_darwin_amd64.tar.gz.sha256
-                      artifacts/release-bundle/flotte_darwin_arm64.tar.gz
-                      artifacts/release-bundle/flotte_darwin_arm64.tar.gz.sha256
-                      artifacts/release-bundle/flotte_windows_amd64.zip
-                      artifacts/release-bundle/flotte_windows_amd64.zip.sha256
-                      artifacts/release-bundle/flotte_windows_arm64.zip
-                      artifacts/release-bundle/flotte_windows_arm64.zip.sha256
+            - name: Build all platforms
+              run: just build-all
