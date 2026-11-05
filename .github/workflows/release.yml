@@ -70,8 +70,6 @@ jobs:
 
     winget:
         name: WinGet
-        # Set this repo variable to true after the first winget-pkgs PR has merged.
-        if: vars.WINGET_ENABLED == 'true'
         needs:
             - github
         uses: ./.github/workflows/release-winget.yml
