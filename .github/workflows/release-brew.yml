@@ -1,0 +1,73 @@
+name: Update Homebrew tap
+
+on:
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: Existing release tag, such as v0.0.2
+                required: true
+                type: string
+    workflow_call:
+        secrets:
+            HOMEBREW_TAP_TOKEN:
+                required: true
+
+permissions:
+    contents: read
+
+jobs:
+    brew:
+        name: Update Homebrew tap
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout tap
+              uses: actions/checkout@v7
+              with:
+                  repository: flotte-sh/homebrew-tap
+                  ref: main
+                  path: tap
+                  token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+            - name: Update formula and push
+              shell: bash
+              env:
+                  GH_TOKEN: ${{ github.token }}
+                  GH_REPO: ${{ github.repository }}
+                  TAG: ${{ inputs.tag || github.ref_name }}
+              run: |
+                  set -euo pipefail
+
+                  version="${TAG#v}"
+                  if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+                    echo "::notice::Skipping Homebrew update for pre-release tag $TAG"
+                    exit 0
+                  fi
+
+                  formula=Formula/flotte-cli.rb
+                  sed -i -E "s/^(  version \")[^\"]+(\")/\1$version\2/" "tap/$formula"
+                  grep -Fq "  version \"$version\"" "tap/$formula"
+
+                  for asset in darwin_arm64 darwin_amd64 linux_arm64 linux_amd64; do
+                    name="flotte_$asset.tar.gz"
+                    hash="$(gh release download "$TAG" --pattern "$name.sha256" --output - | cut -d' ' -f1)"
+                    if [[ ! "$hash" =~ ^[0-9a-f]{64}$ ]]; then
+                      echo "::error::Invalid SHA-256 for $name"
+                      exit 1
+                    fi
+                    sed -i -E "/\/$name\"/{s#/download/[^/]+/#/download/$TAG/#;n;s/sha256 \"[0-9a-f]{64}\"/sha256 \"$hash\"/}" "tap/$formula"
+                    grep -Fq "/download/$TAG/$name\"" "tap/$formula"
+                    grep -Fq "sha256 \"$hash\"" "tap/$formula"
+                  done
+
+                  cd tap
+                  if git diff --quiet; then
+                    echo "::notice::Formula is already at $version"
+                    # Nothing to push
+                    git push --dry-run origin HEAD:main
+                    exit 0
+                  fi
+                  git config user.name "Flotte Release"
+                  git config user.email "support@flotte.sh"
+                  git add "$formula"
+                  git commit -m "flotte-cli $version"
+                  git push origin HEAD:main

@@ -75,3 +75,13 @@ jobs:
         uses: ./.github/workflows/release-winget.yml
         secrets:
             WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+
+    brew:
+        name: Homebrew
+        # Tags must be protected: this pushes straight to users with no review.
+        if: github.ref_protected
+        needs:
+            - github
+        uses: ./.github/workflows/release-brew.yml
+        secrets:
+            HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
