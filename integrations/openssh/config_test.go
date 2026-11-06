@@ -16,16 +16,19 @@ func TestSshConfigLifecycleAcrossExecutablePaths(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	goos = "linux"
 	argv = []string{"/tmp/go-build123/b001/exe/flotte"}
-	if err := InstallConfig(); err != nil {
-		t.Fatal(err)
+	if status, err := InstallConfig(); err != nil || status != InstallStatusInstalled {
+		t.Fatalf("first install: status %v, error %v", status, err)
 	}
 	argv = []string{"/usr/local/bin/flotte"}
 	configured, err := IsConfigured()
 	if err != nil || !configured {
 		t.Error("installed config was not detected after executable changed")
 	}
-	if err := InstallConfig(); err == nil {
-		t.Error("installed duplicate config after executable changed")
+	if status, err := InstallConfig(); err != nil || status != InstallStatusUpdated {
+		t.Fatalf("install after executable changed: status %v, error %v", status, err)
+	}
+	if status, err := InstallConfig(); err != nil || status != InstallStatusUnchanged {
+		t.Fatalf("repeat install: status %v, error %v", status, err)
 	}
 	if err := UninstallConfig(); err != nil {
 		t.Fatal(err)
@@ -36,6 +39,119 @@ func TestSshConfigLifecycleAcrossExecutablePaths(t *testing.T) {
 	}
 	if err := UninstallConfig(); err == nil {
 		t.Error("second uninstall should report missing config")
+	}
+}
+
+func TestInstallConfigReplacesOnlyStaleBlockInPlace(t *testing.T) {
+	originalArgs, originalGOOS := argv, goos
+	t.Cleanup(func() { argv, goos = originalArgs, originalGOOS })
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	goos = "linux"
+	path, err := getSSHConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createSSHConfigIfMissing(path); err != nil {
+		t.Fatal(err)
+	}
+	before := "Host first\n\tUser alice\n\n"
+	after := "Host last\r\n\tUser bob\r\n"
+	stale := "# BEGIN FLOTTE OPENSSH\nHost *\n\tKnownHostsCommand \"/removed/flotte\" ssh-hostkeys %I %H %r %t %K %C\n\tIdentityAgent \"/old/%C\"\n# END FLOTTE OPENSSH\n\n"
+	if err := os.WriteFile(path, []byte(before+stale+after), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	argv = []string{"/usr/local/bin/$1flotte"}
+
+	status, err := InstallConfig()
+	if err != nil || status != InstallStatusUpdated {
+		t.Fatalf("status %v, error %v", status, err)
+	}
+	entry, err := generateSSHConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := before + entry + after; string(content) != want {
+		t.Fatalf("content = %q, want %q", content, want)
+	}
+}
+
+func TestInstallConfigLeavesMatchingBlockUntouched(t *testing.T) {
+	originalArgs, originalGOOS := argv, goos
+	t.Cleanup(func() { argv, goos = originalArgs, originalGOOS })
+	goos = "linux"
+	argv = []string{"/usr/local/bin/flotte"}
+	entry, err := generateSSHConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, block := range map[string]string{
+		"LF":            entry,
+		"CRLF":          strings.ReplaceAll(entry, "\n", "\r\n"),
+		"no blank line": strings.TrimSuffix(entry, "\n"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			path, err := getSSHConfigPath()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := createSSHConfigIfMissing(path); err != nil {
+				t.Fatal(err)
+			}
+			original := block + "Host example\n\tUser alice\n"
+			if err := os.WriteFile(path, []byte(original), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			status, err := InstallConfig()
+			if err != nil || status != InstallStatusUnchanged {
+				t.Fatalf("status %v, error %v", status, err)
+			}
+			content, err := os.ReadFile(path)
+			if err != nil || string(content) != original {
+				t.Fatalf("content = %q, error %v", content, err)
+			}
+		})
+	}
+}
+
+func TestInstallConfigCollapsesDuplicateBlocks(t *testing.T) {
+	originalArgs, originalGOOS := argv, goos
+	t.Cleanup(func() { argv, goos = originalArgs, originalGOOS })
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	goos = "linux"
+	argv = []string{"/usr/local/bin/flotte"}
+	entry, err := generateSSHConfig()
+	if err != nil {
+		t.Fatal(err)
+	}
+	path, err := getSSHConfigPath()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := createSSHConfigIfMissing(path); err != nil {
+		t.Fatal(err)
+	}
+	custom := "Host example\n\tUser alice\n"
+	if err := os.WriteFile(path, []byte(entry+custom+"\n"+entry), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	status, err := InstallConfig()
+	if err != nil || status != InstallStatusUpdated {
+		t.Fatalf("status %v, error %v", status, err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil || string(content) != entry+custom+"\n" {
+		t.Fatalf("content = %q, error %v", content, err)
 	}
 }
 
@@ -189,8 +305,8 @@ func TestNativeSSHConfigMigratesLegacy(t *testing.T) {
 	if err := os.WriteFile(path, []byte(legacy+custom), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := InstallConfig(); err != nil {
-		t.Fatal(err)
+	if status, err := InstallConfig(); err != nil || status != InstallStatusUpdated {
+		t.Fatalf("migration: status %v, error %v", status, err)
 	}
 	content, err := os.ReadFile(path)
 	if err != nil || strings.Contains(string(content), "cert auto") || !strings.HasSuffix(string(content), custom) || !nativeSSHConfigPattern.Match(content) {

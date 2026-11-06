@@ -157,7 +157,7 @@ func configureSetupSSH(cmd *cobra.Command, options setupOptions, interactive boo
 	if !install {
 		return "SSH config not enabled", "Connect through Flotte: flotte ssh user@host", nil
 	}
-	if err := openssh.InstallConfig(); err != nil {
+	if _, err := openssh.InstallConfig(); err != nil {
 		return "", "", clierrors.Wrap("setup", err, "failed to configure SSH - you can retry by running 'flotte ssh-config install'")
 	}
 	return "SSH config enabled", "Just use SSH as usual: ssh user@host", nil

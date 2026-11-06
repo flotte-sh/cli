@@ -20,10 +20,18 @@ func NewSSHConfigCmd() *cobra.Command {
 		Short:   "Enable Flotte certificates for ssh, scp, and sftp",
 		Args:    cobra.NoArgs,
 		RunE: func(c *cobra.Command, args []string) error {
-			if err := openssh.InstallConfig(); err != nil {
+			status, err := openssh.InstallConfig()
+			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), "SSH configuration installed successfully.")
+			switch status {
+			case openssh.InstallStatusUpdated:
+				fmt.Fprintln(c.OutOrStdout(), "SSH configuration updated successfully.")
+			case openssh.InstallStatusUnchanged:
+				fmt.Fprintln(c.OutOrStdout(), "SSH is already configured for flotte.")
+			default:
+				fmt.Fprintln(c.OutOrStdout(), "SSH configuration installed successfully.")
+			}
 			return nil
 		},
 	})

@@ -29,7 +29,7 @@ func TestUninstallIntegrations(t *testing.T) {
 	if err := os.WriteFile(sshPath, []byte(otherConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := openssh.InstallConfig(); err != nil {
+	if _, err := openssh.InstallConfig(); err != nil {
 		t.Fatal(err)
 	}
 	for attempt := 0; attempt < 2; attempt++ {

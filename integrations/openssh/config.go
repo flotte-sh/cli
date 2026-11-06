@@ -116,32 +116,78 @@ func IsConfigured() (bool, error) {
 	return hasEntry, err
 }
 
-func InstallConfig() error {
+// InstallStatus reports what InstallConfig did to the SSH config.
+type InstallStatus int
+
+const (
+	// InstallStatusInstalled means a Flotte block was added.
+	InstallStatusInstalled InstallStatus = iota
+	// InstallStatusUpdated means an outdated Flotte block was replaced.
+	InstallStatusUpdated
+	// InstallStatusUnchanged means the Flotte block already matched.
+	InstallStatusUnchanged
+)
+
+func InstallConfig() (InstallStatus, error) {
 	const operation = "ssh-config.install"
 	path, err := getSSHConfigPath()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if err := createSSHConfigIfMissing(path); err != nil {
-		return err
+		return 0, err
 	}
 	content, err := readSSHConfig()
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if nativeSSHConfigPattern.MatchString(content) {
-		return clierrors.New(operation, nil, "SSH is already configured for flotte")
-	}
-
 	entry, err := generateSSHConfig()
 	if err != nil {
-		return err
-	}
-	if err := addToSSHConfig(entry); err != nil {
-		return clierrors.Wrap(operation, err, "failed to add flotte entry to SSH config")
+		return 0, err
 	}
 
-	return nil
+	hasLegacyEntry := sshConfigEntryPattern.MatchString(content)
+	nativeBlocks := nativeSSHConfigPattern.FindAllString(content, -1)
+	if len(nativeBlocks) == 0 {
+		if err := addToSSHConfig(entry); err != nil {
+			return 0, clierrors.Wrap(operation, err, "failed to add flotte entry to SSH config")
+		}
+		if hasLegacyEntry {
+			return InstallStatusUpdated, nil
+		}
+		return InstallStatusInstalled, nil
+	}
+	if len(nativeBlocks) == 1 && !hasLegacyEntry && sameSSHConfigBlock(nativeBlocks[0], entry) {
+		return InstallStatusUnchanged, nil
+	}
+	updated := []byte(replaceSSHConfigBlocks(content, entry))
+	if err := os.WriteFile(path, updated, 0o600); err != nil { // #nosec G703 -- path is derived from the current user's home directory.
+		return 0, clierrors.Wrap(operation, err, "failed to update flotte entry in SSH config")
+	}
+	return InstallStatusUpdated, nil
+}
+
+// sameSSHConfigBlock ignores line endings and trailing blank lines, which do not
+// change what OpenSSH reads.
+func sameSSHConfigBlock(a, b string) bool {
+	normalize := func(block string) string {
+		return strings.TrimRight(strings.ReplaceAll(block, "\r\n", "\n"), "\n")
+	}
+	return normalize(a) == normalize(b)
+}
+
+// replaceSSHConfigBlocks writes entry where the first Flotte block was, because
+// OpenSSH uses the first value it reads, and removes any other Flotte blocks.
+func replaceSSHConfigBlocks(content, entry string) string {
+	content = sshConfigEntryPattern.ReplaceAllString(content, "")
+	replaced := false
+	return nativeSSHConfigPattern.ReplaceAllStringFunc(content, func(string) string {
+		if replaced {
+			return ""
+		}
+		replaced = true
+		return entry
+	})
 }
 
 func UninstallConfig() error {
