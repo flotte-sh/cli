@@ -56,6 +56,15 @@ flotte ssh-config install
 ssh user@host
 ```
 
+## Integrations
+
+| Client | Platforms | Command |
+| --- | --- | --- |
+| OpenSSH (`ssh`, `scp`, `sftp`) | Linux, macOS, Windows | `flotte ssh-config install`, or `flotte ssh user@host` for a single connection |
+| FileZilla (3.71.0 or newer) | Linux, macOS, Windows | `flotte filezilla user@host` |
+| PuTTY | Windows | `flotte putty user@host` |
+| WinSCP | Windows | `flotte winscp user@host` |
+
 ## SSH Integration
 
 See the [integration overview](https://docs.flotte.sh/integrations/) and
