@@ -20,13 +20,6 @@ brew trust flotte-sh/tap
 brew install flotte-cli
 ```
 
-On Linux, set up SSH integration with the stable path, so that `brew upgrade` does not
-break it:
-
-```sh
-"$(brew --prefix)/bin/flotte" ssh-config install
-```
-
 ### From source
 
 Requires Go 1.26.9 or newer patched release. Go 1.27 users need 1.27.2 or newer.
