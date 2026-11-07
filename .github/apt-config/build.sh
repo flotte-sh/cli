@@ -17,8 +17,8 @@ if ! command -v dpkg-scanpackages >/dev/null 2>&1; then
 	exit 2
 fi
 
-if [[ ! "$VERSION" =~ ^[0-9] ]]; then
-	echo "invalid Debian package version: '$VERSION' (must start with a digit)" >&2
+if [[ ! "$VERSION" =~ ^[0-9][0-9A-Za-z.+~-]*$ ]]; then
+	echo "invalid Debian package version: '$VERSION'" >&2
 	exit 5
 fi
 
