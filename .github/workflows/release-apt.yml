@@ -12,8 +12,10 @@ on:
                 type: string
     workflow_call:
         secrets:
+            # Optional because the secret belongs in the apt-signing environment,
+            # which takes precedence over a value passed by the caller.
             GPG_PRIVATE_KEY:
-                required: true
+                required: false
 
 permissions:
     contents: read
@@ -27,6 +29,8 @@ jobs:
         # Manual runs sign and publish, so only allow them from main.
         if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
+        # Holds the signing key. Configure required reviewers on this environment.
+        environment: apt-signing
         env:
             TAG: ${{ inputs.tag || github.ref_name }}
         steps:
