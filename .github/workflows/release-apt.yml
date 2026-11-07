@@ -1,8 +1,15 @@
 name: Publish APT repo to GitHub Pages
 
 # Called by release.yml after tests pass and the release is published, so it packages
-# the same binaries that were attached to the release.
+# the same binaries that were attached to the release. Can also be run manually from
+# main to republish an existing release from its attached assets.
 on:
+    workflow_dispatch:
+        inputs:
+            tag:
+                description: Existing release tag, such as v0.0.2
+                required: true
+                type: string
     workflow_call:
         secrets:
             GPG_PRIVATE_KEY:
@@ -19,16 +26,27 @@ concurrency:
 
 jobs:
     build:
+        # Manual runs sign and publish, so only allow them from main.
+        if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
         runs-on: ubuntu-latest
+        env:
+            TAG: ${{ inputs.tag || github.ref_name }}
         steps:
             - name: Checkout
               uses: actions/checkout@v7
 
             - name: Download release bundle
+              if: ${{ !inputs.tag }}
               uses: actions/download-artifact@v8
               with:
                   name: release-bundle
                   path: dist
+
+            - name: Download existing release assets
+              if: ${{ inputs.tag }}
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir dist --pattern 'flotte_linux_*'
 
             - name: Unpack Linux binaries
               shell: bash
@@ -59,7 +77,7 @@ jobs:
               shell: bash
               env:
                   GPG_SIGN: "true"
-              run: bash .github/apt-config/build.sh public "${GITHUB_REF_NAME#v}"
+              run: bash .github/apt-config/build.sh public "${TAG#v}"
 
             - name: Remove GPG signing key
               if: always()
@@ -70,7 +88,7 @@ jobs:
 
             - name: Verify APT repo
               shell: bash
-              run: bash .github/apt-config/verify.sh public "${GITHUB_REF_NAME#v}"
+              run: bash .github/apt-config/verify.sh public "${TAG#v}"
 
             - name: Configure Pages
               uses: actions/configure-pages@v6
