@@ -28,6 +28,8 @@ jobs:
               uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
               with:
                   go-version-file: go.mod
+                  # Never restore a shared cache into the build that produces release binaries.
+                  cache: false
 
             - name: Set up just
               uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
