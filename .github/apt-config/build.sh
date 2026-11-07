@@ -10,6 +10,7 @@ DIST_DIR=dist
 PACKAGE_DIR=.apt-package
 RELEASE_DIR="$OUT_DIR/dists/stable"
 POOL_DIR="$OUT_DIR/pool/main/$PKGNAME"
+SIGNING_KEY=${SIGNING_KEY:-.github/apt-config/signing-key.asc}
 
 if ! command -v dpkg-scanpackages >/dev/null 2>&1; then
 	echo "dpkg-scanpackages not found. Install dpkg-dev." >&2
@@ -81,8 +82,16 @@ if [[ "${GPG_SIGN:-false}" == "true" ]]; then
 		exit 3
 	fi
 
-	gpg --batch --yes --digest-algo SHA512 --armor --clearsign --output "$RELEASE_DIR/InRelease" "$RELEASE_DIR/Release"
-	gpg --batch --yes --digest-algo SHA512 --armor --detach-sign --output "$RELEASE_DIR/Release.gpg" "$RELEASE_DIR/Release"
-	gpg --batch --yes --armor --export > "$OUT_DIR/signing-key.asc"
-	gpg --batch --yes --export > "$OUT_DIR/signing-key.gpg"
+	# Publish the committed public key, not a fresh export: gpg --export can pad
+	# signature values in a way that apt's Sequoia verifier rejects as unbound.
+	fingerprint=$(gpg --show-keys --with-colons "$SIGNING_KEY" | awk -F: '/^fpr:/ { print $10; exit }')
+	if [[ -z "$fingerprint" ]] || ! gpg --list-secret-keys "$fingerprint" >/dev/null 2>&1; then
+		echo "signing key does not match $SIGNING_KEY (fingerprint: '${fingerprint}')" >&2
+		exit 6
+	fi
+
+	gpg --batch --yes --local-user "$fingerprint" --digest-algo SHA512 --armor --clearsign --output "$RELEASE_DIR/InRelease" "$RELEASE_DIR/Release"
+	gpg --batch --yes --local-user "$fingerprint" --digest-algo SHA512 --armor --detach-sign --output "$RELEASE_DIR/Release.gpg" "$RELEASE_DIR/Release"
+	install -m 0644 "$SIGNING_KEY" "$OUT_DIR/signing-key.asc"
+	gpg --batch --yes --dearmor --output "$OUT_DIR/signing-key.gpg" "$SIGNING_KEY"
 fi
