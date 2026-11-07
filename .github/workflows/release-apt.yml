@@ -90,6 +90,22 @@ jobs:
               shell: bash
               run: bash .github/apt-config/verify.sh public "${TAG#v}"
 
+            # Debian 13's apt verifies with Sequoia (sqv), which is stricter than gpg.
+            - name: Verify APT repo on Debian 13
+              shell: bash
+              run: |
+                  set -euo pipefail
+                  docker run --rm \
+                    -e "VERSION=${TAG#v}" \
+                    -v "$PWD/public:/repo:ro" \
+                    -v "$PWD/.github/apt-config/verify.sh:/verify.sh:ro" \
+                    debian:13@sha256:9c6e381421d0f48d1b8133e573f33c185ee16cbf505eda9c4a8a4791b25ea8a6 \
+                    bash -c 'set -euo pipefail
+                      apt-get update -qq
+                      apt-get install -y -qq --no-install-recommends python3 >/dev/null
+                      command -v sqv
+                      bash /verify.sh /repo "$VERSION"'
+
             - name: Configure Pages
               uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
