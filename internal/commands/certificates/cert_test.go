@@ -1,7 +1,7 @@
 package certificates
 
 import (
-	common "github.com/flotte-sh/flotte-cli/internal/commands/common"
+	common "github.com/flotte-sh/cli/internal/commands/common"
 	"os"
 	"path/filepath"
 	"strings"

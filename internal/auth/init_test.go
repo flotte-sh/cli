@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flotte-sh/flotte-cli/internal/config"
+	"github.com/flotte-sh/cli/internal/config"
 	"github.com/zalando/go-keyring"
 )
 

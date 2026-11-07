@@ -15,7 +15,7 @@ import (
 	"regexp"
 	"strings"
 
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 	"golang.org/x/crypto/ssh"
 )
 

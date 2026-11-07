@@ -3,7 +3,7 @@ package openssh
 import (
 	"context"
 
-	"github.com/flotte-sh/flotte-cli/internal/client"
+	"github.com/flotte-sh/cli/internal/client"
 )
 
 type Session struct {

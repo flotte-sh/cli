@@ -18,9 +18,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/flotte-sh/flotte-cli/integrations/internal/agentserver"
-	"github.com/flotte-sh/flotte-cli/integrations/internal/certagent"
-	"github.com/flotte-sh/flotte-cli/internal/sshhelper"
+	"github.com/flotte-sh/cli/integrations/internal/agentserver"
+	"github.com/flotte-sh/cli/integrations/internal/certagent"
+	"github.com/flotte-sh/cli/internal/sshhelper"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )

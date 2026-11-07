@@ -6,11 +6,11 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/flotte-sh/flotte-cli/internal/commands/account"
-	"github.com/flotte-sh/flotte-cli/internal/commands/certificates"
-	"github.com/flotte-sh/flotte-cli/internal/commands/common"
-	"github.com/flotte-sh/flotte-cli/internal/commands/start"
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	"github.com/flotte-sh/cli/internal/commands/account"
+	"github.com/flotte-sh/cli/internal/commands/certificates"
+	"github.com/flotte-sh/cli/internal/commands/common"
+	"github.com/flotte-sh/cli/internal/commands/start"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 	"github.com/spf13/cobra"
 )
 

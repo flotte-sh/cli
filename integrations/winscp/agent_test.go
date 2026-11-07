@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flotte-sh/flotte-cli/integrations/internal/certagent"
-	"github.com/flotte-sh/flotte-cli/internal/client"
+	"github.com/flotte-sh/cli/integrations/internal/certagent"
+	"github.com/flotte-sh/cli/internal/client"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )

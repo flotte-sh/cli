@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 )
 
 func ParseSSHTarget(target string) (user, serverAddress string, err error) {

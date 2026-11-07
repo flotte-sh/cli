@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"time"
 
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 )
 
 const maxResponseBodySize = 1 << 20 // 1 MiB — enough for token responses, blocks unbounded reads

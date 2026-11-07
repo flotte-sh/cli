@@ -9,7 +9,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/flotte-sh/flotte-cli/integrations/internal/target"
+	"github.com/flotte-sh/cli/integrations/internal/target"
 )
 
 type Options struct {

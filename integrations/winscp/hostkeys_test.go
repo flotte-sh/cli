@@ -7,7 +7,7 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/flotte-sh/flotte-cli/internal/client"
+	"github.com/flotte-sh/cli/internal/client"
 	"golang.org/x/crypto/ssh"
 )
 

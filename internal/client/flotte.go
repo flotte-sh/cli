@@ -7,8 +7,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/flotte-sh/flotte-cli/internal/config"
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	"github.com/flotte-sh/cli/internal/config"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 )
 
 type SshCertRequest struct {

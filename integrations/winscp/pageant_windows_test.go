@@ -15,7 +15,7 @@ import (
 	"unsafe"
 
 	"github.com/Microsoft/go-winio"
-	"github.com/flotte-sh/flotte-cli/integrations/internal/pageant"
+	"github.com/flotte-sh/cli/integrations/internal/pageant"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/sys/windows"

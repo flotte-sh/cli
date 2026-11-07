@@ -9,7 +9,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/flotte-sh/flotte-cli/internal/config"
+	"github.com/flotte-sh/cli/internal/config"
 )
 
 type Discovery struct {

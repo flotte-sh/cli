@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flotte-sh/flotte-cli/internal/config"
+	"github.com/flotte-sh/cli/internal/config"
 )
 
 func TestConfigHasNoAuthModeOptionOrDisplay(t *testing.T) {

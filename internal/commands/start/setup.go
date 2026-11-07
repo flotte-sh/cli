@@ -11,11 +11,11 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
-	"github.com/flotte-sh/flotte-cli/integrations/openssh"
-	"github.com/flotte-sh/flotte-cli/internal/auth"
-	"github.com/flotte-sh/flotte-cli/internal/client"
-	"github.com/flotte-sh/flotte-cli/internal/config"
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	"github.com/flotte-sh/cli/integrations/openssh"
+	"github.com/flotte-sh/cli/internal/auth"
+	"github.com/flotte-sh/cli/internal/client"
+	"github.com/flotte-sh/cli/internal/config"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 	"github.com/spf13/cobra"
 )
 

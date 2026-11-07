@@ -8,9 +8,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/flotte-sh/flotte-cli/internal/config"
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
-	"github.com/flotte-sh/flotte-cli/internal/sshhelper"
+	"github.com/flotte-sh/cli/internal/config"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
+	"github.com/flotte-sh/cli/internal/sshhelper"
 )
 
 type sshMode uint8

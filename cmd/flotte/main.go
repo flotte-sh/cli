@@ -4,7 +4,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/flotte-sh/flotte-cli/internal/commands"
+	"github.com/flotte-sh/cli/internal/commands"
 )
 
 // normal flow:

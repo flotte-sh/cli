@@ -3,10 +3,10 @@ package account
 import (
 	"fmt"
 
-	"github.com/flotte-sh/flotte-cli/internal/auth"
-	"github.com/flotte-sh/flotte-cli/internal/client"
-	common "github.com/flotte-sh/flotte-cli/internal/commands/common"
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
+	"github.com/flotte-sh/cli/internal/auth"
+	"github.com/flotte-sh/cli/internal/client"
+	common "github.com/flotte-sh/cli/internal/commands/common"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 	"github.com/spf13/cobra"
 )
 

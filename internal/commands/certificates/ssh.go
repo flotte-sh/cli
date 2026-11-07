@@ -1,8 +1,8 @@
 package certificates
 
 import (
-	"github.com/flotte-sh/flotte-cli/integrations/openssh"
-	"github.com/flotte-sh/flotte-cli/internal/commands/common"
+	"github.com/flotte-sh/cli/integrations/openssh"
+	"github.com/flotte-sh/cli/internal/commands/common"
 	"github.com/spf13/cobra"
 )
 

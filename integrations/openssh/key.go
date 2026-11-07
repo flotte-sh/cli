@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/flotte-sh/flotte-cli/internal/config"
+	"github.com/flotte-sh/cli/internal/config"
 	"golang.org/x/crypto/ssh"
 )
 

@@ -3,8 +3,8 @@ package certificates
 import (
 	"fmt"
 
-	"github.com/flotte-sh/flotte-cli/integrations/openssh"
-	common "github.com/flotte-sh/flotte-cli/internal/commands/common"
+	"github.com/flotte-sh/cli/integrations/openssh"
+	common "github.com/flotte-sh/cli/internal/commands/common"
 	"github.com/spf13/cobra"
 )
 

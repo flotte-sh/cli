@@ -1,4 +1,4 @@
-module github.com/flotte-sh/flotte-cli
+module github.com/flotte-sh/cli
 
 go 1.26.10
 

@@ -5,9 +5,9 @@ import (
 	"os/user"
 	"strings"
 
-	"github.com/flotte-sh/flotte-cli/integrations/putty"
-	"github.com/flotte-sh/flotte-cli/internal/auth"
-	common "github.com/flotte-sh/flotte-cli/internal/commands/common"
+	"github.com/flotte-sh/cli/integrations/putty"
+	"github.com/flotte-sh/cli/internal/auth"
+	common "github.com/flotte-sh/cli/internal/commands/common"
 	"github.com/spf13/cobra"
 )
 

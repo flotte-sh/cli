@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/flotte-sh/flotte-cli/integrations/internal/pageant"
+	"github.com/flotte-sh/cli/integrations/internal/pageant"
 )
 
 func listenAgentEndpoint() (agentEndpoint, error) {

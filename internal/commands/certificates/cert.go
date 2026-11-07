@@ -5,10 +5,10 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/flotte-sh/flotte-cli/internal/client"
-	common "github.com/flotte-sh/flotte-cli/internal/commands/common"
-	clierrors "github.com/flotte-sh/flotte-cli/internal/errors"
-	"github.com/flotte-sh/flotte-cli/internal/sshhelper"
+	"github.com/flotte-sh/cli/internal/client"
+	common "github.com/flotte-sh/cli/internal/commands/common"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
+	"github.com/flotte-sh/cli/internal/sshhelper"
 	"github.com/spf13/cobra"
 )
 
