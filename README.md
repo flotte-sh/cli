@@ -36,10 +36,8 @@ Packages are signed with the key `86E4 B3C7 1212 14F2 CD26  D2F4 54FD 2ECF B913 
 
 Requires Go 1.26.9 or newer patched release. Go 1.27 users need 1.27.2 or newer.
 
-From the CLI repository (or the `cli/` directory of the main repository):
-
 ```sh
-go install ./cmd/flotte
+go install github.com/flotte-sh/cli/cmd/flotte@latest
 ```
 
 Ensure your Go binary directory is on `PATH`.
