@@ -20,6 +20,18 @@ brew trust flotte-sh/tap
 brew install flotte-cli
 ```
 
+### APT (Debian and Ubuntu)
+
+```sh
+sudo install -d -m 0755 /etc/apt/keyrings
+curl -fsSL https://apt.flotte.sh/signing-key.gpg | sudo tee /etc/apt/keyrings/flotte.gpg >/dev/null
+echo "deb [signed-by=/etc/apt/keyrings/flotte.gpg] https://apt.flotte.sh stable main" | sudo tee /etc/apt/sources.list.d/flotte.list
+sudo apt update
+sudo apt install flotte
+```
+
+Packages are signed with the key `86E4 B3C7 1212 14F2 CD26  D2F4 54FD 2ECF B913 51A9`.
+
 ### From source
 
 Requires Go 1.26.9 or newer patched release. Go 1.27 users need 1.27.2 or newer.
