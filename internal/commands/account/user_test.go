@@ -2,9 +2,11 @@ package account
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -84,17 +86,35 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 				return
 			}
 			fmt.Fprint(w, `{"authenticated":false}`)
-		case "/auth/cli/browser/start":
-			fmt.Fprintf(w, `{"authUrl":%q,"flowId":"flow","secret":"secret"}`, "https://login.example.com")
-		case "/auth/cli/browser/token":
-			fmt.Fprint(w, `{"token":"fresh-token"}`)
+		case "/auth/cli/token":
+			if r.PostFormValue("code") != "loopback-code" || r.PostFormValue("code_verifier") == "" {
+				http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+				return
+			}
+			fmt.Fprint(w, `{"access_token":"fresh-token","token_type":"Bearer","expires_in":3600}`)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
 
-	stdout, _, err := executeLogin(t, server.URL)
+	signInThroughLoopback := func(loginURL string) error {
+		request, err := url.Parse(loginURL)
+		if err != nil {
+			return err
+		}
+		response := url.Values{"code": {"loopback-code"}, "state": {request.Query().Get("state")}, "iss": {server.URL}}
+		go func() {
+			resp, err := http.Get(request.Query().Get("redirect_uri") + "?" + response.Encode())
+			if err != nil {
+				t.Errorf("loopback callback: %v", err)
+				return
+			}
+			_ = resp.Body.Close()
+		}()
+		return nil
+	}
+	stdout, _, err := executeLoginContext(t, auth.WithBrowserOpener(t.Context(), signInThroughLoopback), server.URL)
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -134,12 +154,17 @@ func TestLoginDeletesSessionInvalidatedDuringIdentityLookup(t *testing.T) {
 
 func executeLogin(t *testing.T, serverURL string) (string, string, error) {
 	t.Helper()
+	return executeLoginContext(t, t.Context(), serverURL)
+}
+
+func executeLoginContext(t *testing.T, ctx context.Context, serverURL string) (string, string, error) {
+	t.Helper()
 	root := &Root{Config: &config.ClientConfig{FlotteUrl: serverURL}}
 	cmd := NewLoginCmd(root)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
-	err := cmd.ExecuteContext(t.Context())
+	err := cmd.ExecuteContext(ctx)
 	return stdout.String(), stderr.String(), err
 }
