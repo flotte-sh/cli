@@ -7,9 +7,19 @@ ldflags := '-s -w -X main.version=' + version
 default_platforms := "linux/amd64 linux/arm64 linux/arm linux/386 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64"
 platforms := env("FLOTTE_PLATFORMS", default_platforms)
 
+[private]
 default:
     @just --list
 
+# Download Go module dependencies
+install:
+    go mod download
+
+# Run the CLI from source, e.g. just run --help
+run *args:
+    go run ./cmd/flotte {{ args }}
+
+# Build for the host platform to dist/flotte
 build:
     mkdir -p "{{ dist_dir }}"
     CGO_ENABLED=0 go build -trimpath -ldflags='{{ ldflags }}' -o "{{ dist_dir }}/{{ binary }}" ./cmd/flotte
@@ -30,6 +40,7 @@ build-windows-arm64:
     mkdir -p "{{ dist_dir }}/{{ binary }}_windows_arm64"
     CGO_ENABLED=0 GOOS=windows GOARCH=arm64 go build -trimpath -ldflags='{{ ldflags }}' -o "{{ dist_dir }}/{{ binary }}_windows_arm64/{{ binary }}.exe" ./cmd/flotte
 
+# Build every platform in FLOTTE_PLATFORMS
 build-all:
     mkdir -p "{{ dist_dir }}"
     for platform in {{ platforms }}; do \
@@ -45,6 +56,7 @@ build-all:
         env CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" $GOARM go build -trimpath -ldflags='{{ ldflags }}' -o "$output" ./cmd/flotte; \
     done
 
+# Build all platforms and pack release archives with checksums
 release-bundle: clean build-all
     for platform in {{ platforms }}; do \
         os="${platform%/*}"; \
@@ -60,13 +72,38 @@ release-bundle: clean build-all
         fi; \
     done
 
+# Run Go tests with the race detector
 test:
-    go test ./...
+    go test -race ./...
 
+# Fail on unformatted files, then go vet and staticcheck
 lint:
-    gofmt -l .
+    files="$(gofmt -l .)"; if [ -n "$files" ]; then echo "The following files are not properly formatted:"; echo "$files"; exit 1; fi
     go vet ./...
     staticcheck ./...
 
+# Run tests, lint, and build
+check: test lint build
+
+# Run gosec, staticcheck, and govulncheck
+scan: gosec staticcheck govulncheck
+
+# Format Go sources
+format:
+    gofmt -w .
+
+# Scan with gosec
+gosec:
+    gosec -fmt golint ./...
+
+# Run staticcheck
+staticcheck:
+    staticcheck ./...
+
+# Scan dependencies and the toolchain for known vulnerabilities
+govulncheck:
+    govulncheck ./...
+
+# Remove dist/
 clean:
     rm -rf "{{ dist_dir }}"
