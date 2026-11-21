@@ -22,7 +22,7 @@ func TestBrowserPresentation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
 			ctx := WithPresentation(context.Background(), &out, test.show)
-			printBrowserInstructions(ctx, "https://example.test/login", test.launchErr)
+			printLoopbackInstructions(ctx, &loopbackLogin{authorizeURL: "https://example.test/login", port: 43123}, test.launchErr)
 			if strings.Contains(out.String(), "https://example.test/login") != test.wantURL {
 				t.Fatalf("unexpected URL visibility: %q", out.String())
 			}
@@ -31,6 +31,9 @@ func TestBrowserPresentation(t *testing.T) {
 			}
 			if test.launchErr != nil && !strings.Contains(out.String(), "Could not open the browser") {
 				t.Fatalf("missing browser failure warning: %q", out.String())
+			}
+			if test.wantURL && !strings.Contains(out.String(), "ssh -L 43123:127.0.0.1:43123") {
+				t.Fatalf("missing remote machine hint: %q", out.String())
 			}
 			if !test.wantURL && !strings.Contains(out.String(), "--show-login-url") {
 				t.Fatalf("missing URL fallback: %q", out.String())
@@ -45,7 +48,7 @@ func TestBrowserPresentation(t *testing.T) {
 func TestDefaultBrowserPresentation(t *testing.T) {
 	var out bytes.Buffer
 	ctx := context.WithValue(context.Background(), presentationWriterKey{}, &out)
-	printBrowserInstructions(ctx, "https://example.test/login", nil)
+	printLoopbackInstructions(ctx, &loopbackLogin{authorizeURL: "https://example.test/login", port: 43123}, nil)
 	if !strings.Contains(out.String(), "Visit: https://example.test/login") {
 		t.Fatalf("default login output changed: %q", out.String())
 	}

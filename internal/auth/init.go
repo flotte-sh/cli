@@ -37,8 +37,8 @@ func showLoginURL(ctx context.Context) bool {
 }
 
 var (
-	browserToken = GetTokenFromBrowserFlow
-	deviceToken  = GetTokenFromDeviceFlow
+	loopbackToken = GetTokenFromLoopbackFlow
+	deviceToken   = GetTokenFromDeviceFlow
 )
 
 func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bool) (string, error) {
@@ -72,9 +72,9 @@ func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bo
 		method string
 	)
 	switch authMode {
-	case authMethodBrowser:
-		method = authMethodBrowser
-		token, err = browserToken(cfg, ctx)
+	case authMethodLoopback:
+		method = "browser"
+		token, err = loopbackToken(cfg, ctx)
 	case authMethodDevice:
 		method = "device flow"
 		token, err = deviceToken(cfg, ctx)

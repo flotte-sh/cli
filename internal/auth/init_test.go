@@ -85,10 +85,10 @@ func TestInitAuthRejectsStaleSessionWithoutInteraction(t *testing.T) {
 
 func TestInitAuthReauthenticatesStaleSession(t *testing.T) {
 	prepareCachedToken(t, "stale-token")
-	stubBrowserToken(t, "fresh-token")
+	stubLoopbackToken(t, "fresh-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/cli-config" {
-			fmt.Fprint(w, `{"authMode":"browser"}`)
+			fmt.Fprint(w, `{"authMode":"loopback"}`)
 			return
 		}
 		fmt.Fprintf(w, `{"authenticated":%t}`, r.Header.Get("X-flotte-token") == "fresh-token")
@@ -115,10 +115,10 @@ func TestInitAuthRecoversFromUnauthorizedCachedSession(t *testing.T) {
 	for _, interactive := range []bool{false, true} {
 		t.Run(fmt.Sprintf("interactive=%t", interactive), func(t *testing.T) {
 			prepareCachedToken(t, "stale-token")
-			stubBrowserToken(t, "fresh-token")
+			stubLoopbackToken(t, "fresh-token")
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/.well-known/cli-config" {
-					fmt.Fprint(w, `{"authMode":"browser"}`)
+					fmt.Fprint(w, `{"authMode":"loopback"}`)
 					return
 				}
 				if r.Header.Get("X-flotte-token") == "stale-token" {
@@ -154,10 +154,10 @@ func TestInitAuthRecoversFromUnauthorizedCachedSession(t *testing.T) {
 func TestInitAuthCachesFreshSessionWhenValidationFails(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
-	stubBrowserToken(t, "fresh-token")
+	stubLoopbackToken(t, "fresh-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/cli-config" {
-			fmt.Fprint(w, `{"authMode":"browser"}`)
+			fmt.Fprint(w, `{"authMode":"loopback"}`)
 			return
 		}
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -190,13 +190,13 @@ func testAuthConfig(serverURL string) *config.ClientConfig {
 	return &config.ClientConfig{FlotteUrl: serverURL}
 }
 
-func stubBrowserToken(t *testing.T, token string) {
+func stubLoopbackToken(t *testing.T, token string) {
 	t.Helper()
-	original := browserToken
-	browserToken = func(*config.ClientConfig, context.Context) (string, error) {
+	original := loopbackToken
+	loopbackToken = func(*config.ClientConfig, context.Context) (string, error) {
 		return token, nil
 	}
 	t.Cleanup(func() {
-		browserToken = original
+		loopbackToken = original
 	})
 }

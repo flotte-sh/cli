@@ -81,6 +81,15 @@ authentication flow, credential lifetime, and troubleshooting.
 - Certificates expire; established SSH sessions continue after expiry.
 - Use `flotte ssh --legacy user@host` for the older file-based certificate flow.
 
+## Signing In
+
+`flotte setup` and `flotte login` open your browser. After you sign in, Flotte asks you to confirm, then redirects the browser to a temporary listener the CLI opened on `127.0.0.1`. The CLI exchanges the single-use code it receives for a session, using a secret that never left your computer (OAuth 2.0 authorization code with PKCE, RFC 8252).
+
+- Confirm only a sign-in you started yourself.
+- The link works only in a browser on the computer that runs the CLI.
+- On a remote machine, forward a port and pin it: `ssh -L 8085:127.0.0.1:8085 you@remote`, then `FLOTTE_LOGIN_PORT=8085 flotte login`.
+- This CLI needs a Flotte server that offers the `loopback` sign-in. Older servers must be updated.
+
 ## Common Commands
 
 | Command | Purpose |
