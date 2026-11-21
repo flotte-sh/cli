@@ -26,6 +26,8 @@ type cliDeviceTokenResponse struct {
 	SlowDown bool   `json:"slowDown,omitempty"`
 }
 
+const deviceCodeWarning = "Enter this code yourself. Whoever enters it signs this machine in as their account, so do not pass it on, and never enter a code that someone else sent you."
+
 func GetTokenFromDeviceFlow(cfg *config.ClientConfig, ctx context.Context) (string, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -40,7 +42,7 @@ func GetTokenFromDeviceFlow(cfg *config.ClientConfig, ctx context.Context) (stri
 		return "", fmt.Errorf("failed to start device auth: %w", err)
 	}
 
-	fmt.Fprintf(presentationWriter(ctx), "Visit: %s\nCode:  %s\n", startResp.VerificationURI, startResp.UserCode)
+	fmt.Fprintf(presentationWriter(ctx), "Visit: %s\nCode:  %s\n%s\n", startResp.VerificationURI, startResp.UserCode, deviceCodeWarning)
 	stopHotkeys := startAuthorizationHotkeys(ctx, cancel)
 	defer stopHotkeys()
 	stopWaiting := startAuthorizationWait(presentationWriter(ctx))

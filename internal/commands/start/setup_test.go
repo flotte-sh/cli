@@ -66,6 +66,9 @@ func TestSetupHasShowLoginURLFlag(t *testing.T) {
 	if cmd.Flags().Lookup("show-login-url") == nil {
 		t.Fatal("missing login URL flag")
 	}
+	if cmd.Flags().Lookup("device") == nil {
+		t.Fatal("missing device flag")
+	}
 	if cmd.Flags().Lookup("non-interactive") == nil {
 		t.Fatal("missing non-interactive flag")
 	}

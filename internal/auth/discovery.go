@@ -26,9 +26,14 @@ const (
 	authMethodLegacyBrowser = "browser"
 )
 
-var errLegacyServer = errors.New("this Flotte server only offers a browser sign-in that this CLI no longer supports for security reasons - update the Flotte server")
+var (
+	errLegacyServer      = errors.New("this Flotte server only offers a browser sign-in that this CLI no longer supports for security reasons - update the Flotte server")
+	errDeviceNotOffered  = errors.New("this Flotte server does not offer device sign-in - run 'flotte login' without --device")
+	errDeviceNeedsOptIn  = errors.New("this Flotte server only offers device sign-in, which the CLI never starts on its own - run 'flotte login --device'")
+	errNoSupportedMethod = errors.New("server advertises no supported authentication methods")
+)
 
-func (d Discovery) Method() (string, error) {
+func (d Discovery) methods() ([]string, error) {
 	methods := d.AuthMethods
 	preferred := d.PreferredAuthMethod
 	if methods == nil && preferred == "" {
@@ -36,23 +41,47 @@ func (d Discovery) Method() (string, error) {
 		preferred = d.AuthMode
 	}
 	if len(methods) == 0 {
-		return "", fmt.Errorf("server advertises no authentication methods")
+		return nil, fmt.Errorf("server advertises no authentication methods")
 	}
 	if preferred != "" && !slices.Contains(methods, preferred) {
-		return "", fmt.Errorf("preferred authentication method %q is not advertised", preferred)
+		return nil, fmt.Errorf("preferred authentication method %q is not advertised", preferred)
 	}
-	if preferred == authMethodLoopback || preferred == authMethodDevice {
-		return preferred, nil
+	return methods, nil
+}
+
+// Method picks how to sign in. The server's preference is ignored on purpose:
+// device sign-in hands the session to whoever started it, so it is only used
+// when the user asked for it, and never because a server said so.
+func (d Discovery) Method(deviceRequested bool) (string, error) {
+	methods, err := d.methods()
+	if err != nil {
+		return "", err
 	}
-	for _, method := range []string{authMethodLoopback, authMethodDevice} {
-		if slices.Contains(methods, method) {
-			return method, nil
+	offersDevice := slices.Contains(methods, authMethodDevice)
+	if deviceRequested {
+		if !offersDevice {
+			return "", errDeviceNotOffered
 		}
+		return authMethodDevice, nil
+	}
+	if slices.Contains(methods, authMethodLoopback) {
+		return authMethodLoopback, nil
+	}
+	if offersDevice {
+		return "", errDeviceNeedsOptIn
 	}
 	if slices.Contains(methods, authMethodLegacyBrowser) {
 		return "", errLegacyServer
 	}
-	return "", fmt.Errorf("server advertises no supported authentication methods")
+	return "", errNoSupportedMethod
+}
+
+func (d Discovery) validate() error {
+	_, err := d.Method(false)
+	if errors.Is(err, errDeviceNeedsOptIn) {
+		return nil
+	}
+	return err
 }
 
 func Discover(ctx context.Context, serverURL string) (Discovery, error) {
@@ -87,8 +116,7 @@ func Discover(ctx context.Context, serverURL string) (Discovery, error) {
 			return discovery, fmt.Errorf("invalid discovery base URL: %w", err)
 		}
 	}
-	_, err = discovery.Method()
-	return discovery, err
+	return discovery, discovery.validate()
 }
 
 type discoveryKey struct{}
@@ -104,11 +132,11 @@ func WithDiscovery(ctx context.Context, serverURL string, discovery Discovery) c
 
 func discoverMethod(ctx context.Context, serverURL string) (string, error) {
 	if cached, ok := ctx.Value(discoveryKey{}).(discoveredServer); ok && cached.url == serverURL {
-		return cached.discovery.Method()
+		return cached.discovery.Method(deviceSignInRequested(ctx))
 	}
 	discovery, err := Discover(ctx, serverURL)
 	if err != nil {
 		return "", err
 	}
-	return discovery.Method()
+	return discovery.Method(deviceSignInRequested(ctx))
 }

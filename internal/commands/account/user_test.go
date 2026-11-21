@@ -155,7 +155,57 @@ func TestLoginDeletesSessionInvalidatedDuringIdentityLookup(t *testing.T) {
 	}
 }
 
-func executeLogin(t *testing.T, serverURL string) (string, string, error) {
+func TestLoginUsesDeviceSignInOnlyWithTheDeviceFlag(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		args       []string
+		wantDevice bool
+	}{
+		{"without the flag", nil, false},
+		{"with the flag", []string{"--device"}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv("HOME", t.TempDir())
+			var deviceStarts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/.well-known/cli-config":
+					fmt.Fprint(w, `{"authMethods":["browser","device"],"preferredAuthMethod":"device","authMode":"device"}`)
+				case "/auth/cli/device/start":
+					deviceStarts.Add(1)
+					fmt.Fprint(w, `{"deviceCode":"device-code","userCode":"ABCD-EFGH","verificationUri":"https://idp.example/device","interval":0}`)
+				case "/auth/cli/device/token":
+					fmt.Fprint(w, `{"token":"device-session","pending":false}`)
+				case "/auth/me":
+					fmt.Fprintf(w, `{"authenticated":%t,"email":"dev@example.com"}`, r.Header.Get("X-flotte-token") == "device-session")
+				default:
+					t.Errorf("unexpected request: %s", r.URL.Path)
+				}
+			}))
+			defer server.Close()
+
+			stdout, _, err := executeLogin(t, server.URL, tt.args...)
+			if !tt.wantDevice {
+				if err == nil || !strings.Contains(err.Error(), "flotte login --device") {
+					t.Fatalf("login error = %v, want the --device hint", err)
+				}
+				if deviceStarts.Load() != 0 {
+					t.Fatal("device sign-in started without --device")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("login --device: %v", err)
+			}
+			if deviceStarts.Load() != 1 || !strings.Contains(stdout, "ABCD-EFGH") || !strings.Contains(stdout, "never enter a code that someone else sent you") {
+				t.Fatalf("device starts = %d, output = %q", deviceStarts.Load(), stdout)
+			}
+		})
+	}
+}
+
+func executeLogin(t *testing.T, serverURL string, args ...string) (string, string, error) {
 	t.Helper()
 	root := &Root{Config: &config.ClientConfig{FlotteUrl: serverURL}}
 	cmd := NewLoginCmd(root)
@@ -163,7 +213,8 @@ func executeLogin(t *testing.T, serverURL string) (string, string, error) {
 	var stderr bytes.Buffer
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
-	err := cmd.ExecuteContext(t.Context())
+	cmd.SetArgs(args)
+	err := cmd.ExecuteContext(auth.WithPresentation(t.Context(), &stdout, true))
 	return stdout.String(), stderr.String(), err
 }
 

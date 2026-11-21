@@ -21,6 +21,7 @@ import (
 
 type setupOptions struct {
 	showURL           bool
+	device            bool
 	nonInteractive    bool
 	installSSHConfig  bool
 	installCompletion bool
@@ -100,7 +101,7 @@ func NewSetupCmd(r *Root) *cobra.Command {
 
 			_, noColor := os.LookupEnv("NO_COLOR")
 			_, interactive := setupCapabilities(isSetupTerminal(c.OutOrStdout()), isSetupTerminal(c.InOrStdin()), os.Getenv("TERM"), noColor, runtime.GOOS)
-			ctx := auth.WithDiscovery(c.Context(), discoveryURL, setupConfig)
+			ctx := auth.WithDeviceSignIn(auth.WithDiscovery(c.Context(), discoveryURL, setupConfig), options.device)
 			token, err := auth.InitAuth(r.Config, auth.WithPresentation(ctx, c.OutOrStdout(), options.showURL || !interactive), true)
 			if err != nil {
 				return clierrors.Wrap(operation, err, fmt.Sprintf("%s You can also retry later with 'flotte login'.", clierrors.GetUserMessage(err)))
@@ -129,6 +130,7 @@ func NewSetupCmd(r *Root) *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&options.showURL, "show-login-url", false, "Show the browser sign-in URL even when the browser opens successfully")
+	cmd.Flags().BoolVar(&options.device, "device", false, "Sign in with a code entered on another device. Less safe than the browser sign-in: only for machines that cannot reach a browser")
 	cmd.Flags().BoolVar(&options.nonInteractive, "non-interactive", false, "Run setup without prompts")
 	cmd.Flags().BoolVar(&options.installSSHConfig, "install-ssh-config", false, "Install SSH integration so you can use ssh directly instead of flotte ssh")
 	cmd.Flags().BoolVar(&options.installCompletion, "install-completion", false, "Install shell completion without prompting")

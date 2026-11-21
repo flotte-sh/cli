@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,7 +15,17 @@ import (
 type (
 	showLoginURLKey       struct{}
 	presentationWriterKey struct{}
+	deviceSignInKey       struct{}
 )
+
+func WithDeviceSignIn(ctx context.Context, requested bool) context.Context {
+	return context.WithValue(ctx, deviceSignInKey{}, requested)
+}
+
+func deviceSignInRequested(ctx context.Context) bool {
+	requested, _ := ctx.Value(deviceSignInKey{}).(bool)
+	return requested
+}
 
 func WithPresentation(ctx context.Context, out io.Writer, showURL bool) context.Context {
 	return context.WithValue(WithShowLoginURL(ctx, showURL), presentationWriterKey{}, out)
@@ -63,6 +74,11 @@ func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bo
 
 	authMode, discoveryErr := discoverMethod(ctx, cfg.FlotteUrl)
 	if discoveryErr != nil {
+		for _, hint := range []error{errDeviceNeedsOptIn, errDeviceNotOffered, errLegacyServer} {
+			if errors.Is(discoveryErr, hint) {
+				return "", clierrors.New(operation, discoveryErr, hint.Error())
+			}
+		}
 		return "", clierrors.Wrap(operation, discoveryErr, "failed to discover server authentication methods")
 	}
 
@@ -76,7 +92,7 @@ func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bo
 		method = "browser"
 		token, err = loopbackToken(cfg, ctx)
 	case authMethodDevice:
-		method = "device flow"
+		method = "device"
 		token, err = deviceToken(cfg, ctx)
 	default:
 		return "", clierrors.Newf(operation, nil, "unsupported server authentication method %q", authMode)

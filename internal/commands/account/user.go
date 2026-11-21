@@ -11,14 +11,16 @@ import (
 )
 
 func NewLoginCmd(r *Root) *cobra.Command {
-	return &cobra.Command{
+	var device bool
+	cmd := &cobra.Command{
 		Use:   "login",
 		Short: "Login to your flotte instance",
+		Long:  "Sign in through the browser on this computer. On a machine without a browser, forward a port over SSH and set FLOTTE_LOGIN_PORT, or pass --device if your administrator enabled device sign-in.",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			const operation = "login"
 
-			token, err := common.RequireConfigAndAuth(r, c.Context(), operation, true)
+			token, err := common.RequireConfigAndAuth(r, auth.WithDeviceSignIn(c.Context(), device), operation, true)
 			if err != nil {
 				return err
 			}
@@ -51,7 +53,11 @@ func NewLoginCmd(r *Root) *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVar(&device, "device", false, deviceFlagUsage)
+	return cmd
 }
+
+const deviceFlagUsage = "Sign in with a code entered on another device. Less safe than the browser sign-in: only for machines that cannot reach a browser"
 
 func NewLogoutCmd(r *Root) *cobra.Command {
 	return &cobra.Command{

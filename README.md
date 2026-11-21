@@ -88,6 +88,7 @@ authentication flow, credential lifetime, and troubleshooting.
 - Confirm only a sign-in you started yourself.
 - The link works only in a browser on the computer that runs the CLI.
 - On a remote machine, forward a port and pin it: `ssh -L 8085:127.0.0.1:8085 you@remote`, then `FLOTTE_LOGIN_PORT=8085 flotte login`.
+- `flotte login --device` signs in with a code entered on another device. It only works if the server enables device sign-in, and the CLI never picks it on its own: whoever enters the code signs the machine in as their account, so it is less safe than the browser sign-in.
 - This CLI needs a Flotte server that offers the `loopback` sign-in. Older servers must be updated.
 
 ## Common Commands
