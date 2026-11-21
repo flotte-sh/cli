@@ -4,11 +4,16 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 )
 
 func TestInteractiveCertificateMode(t *testing.T) {
@@ -175,5 +180,60 @@ func TestReadSetupDecision(t *testing.T) {
 		if got != test.want || (err != nil) != test.invalid {
 			t.Errorf("input %q: got %t, %v", test.input, got, err)
 		}
+	}
+}
+
+func TestSetupUsesDeviceSignInOnlyWithTheDeviceFlag(t *testing.T) {
+	for _, tt := range []struct {
+		name       string
+		args       []string
+		wantDevice bool
+	}{
+		{"without the flag", nil, false},
+		{"with the flag", []string{"--device"}, true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			keyring.MockInit()
+			t.Setenv("HOME", t.TempDir())
+			var deviceStarts atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch r.URL.Path {
+				case "/.well-known/cli-config":
+					fmt.Fprint(w, `{"authMethods":["browser","device"],"preferredAuthMethod":"device","authMode":"device"}`)
+				case "/auth/cli/device/start":
+					deviceStarts.Add(1)
+					fmt.Fprint(w, `{"deviceCode":"device-code","userCode":"ABCD-EFGH","verificationUri":"https://idp.example/device"}`)
+				case "/auth/cli/device/token":
+					fmt.Fprint(w, `{"token":"device-session","pending":false}`)
+				case "/auth/me":
+					fmt.Fprintf(w, `{"authenticated":%t,"email":"dev@example.com"}`, r.Header.Get("X-flotte-token") == "device-session")
+				default:
+					t.Errorf("unexpected request: %s", r.URL.Path)
+				}
+			}))
+			defer server.Close()
+
+			cmd := NewSetupCmd(&Root{})
+			var out bytes.Buffer
+			cmd.SetOut(&out)
+			cmd.SetErr(&out)
+			cmd.SetArgs(append([]string{server.URL, "--non-interactive"}, tt.args...))
+			err := cmd.ExecuteContext(t.Context())
+			if !tt.wantDevice {
+				if err == nil || !strings.Contains(err.Error(), "flotte login --device") {
+					t.Fatalf("setup error = %v, want the --device hint", err)
+				}
+				if deviceStarts.Load() != 0 {
+					t.Fatal("device sign-in started without --device")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("setup --device: %v\n%s", err, out.String())
+			}
+			if deviceStarts.Load() != 1 || !strings.Contains(out.String(), "ABCD-EFGH") {
+				t.Fatalf("device starts = %d, output = %q", deviceStarts.Load(), out.String())
+			}
+		})
 	}
 }

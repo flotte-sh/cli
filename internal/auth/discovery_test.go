@@ -64,6 +64,9 @@ func TestDiscoveryNeverPicksDeviceSignInUnasked(t *testing.T) {
 	if _, err := (Discovery{AuthMode: "loopback"}).Method(true); !errors.Is(err, errDeviceNotOffered) {
 		t.Fatalf("--device against a server without device sign-in = %v", err)
 	}
+	if _, err := (Discovery{AuthMode: "browser"}).Method(true); !errors.Is(err, errLegacyServer) {
+		t.Fatalf("--device against a legacy server = %v, want the update hint", err)
+	}
 }
 
 func TestDiscoveryErrorsDoNotStartAuthentication(t *testing.T) {

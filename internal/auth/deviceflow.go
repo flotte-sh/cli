@@ -3,10 +3,13 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/flotte-sh/cli/internal/config"
+	clierrors "github.com/flotte-sh/cli/internal/errors"
 )
 
 type cliDeviceStartResponse struct {
@@ -28,6 +31,16 @@ type cliDeviceTokenResponse struct {
 
 const deviceCodeWarning = "Enter this code yourself. Whoever enters it signs this machine in as their account, so do not pass it on, and never enter a code that someone else sent you."
 
+var (
+	deviceMinPollInterval = 5 * time.Second
+	deviceSlowDownStep    = 5 * time.Second
+)
+
+func isRateLimited(err error) bool {
+	var apiErr *clierrors.APIError
+	return errors.As(err, &apiErr) && apiErr.StatusCode == http.StatusTooManyRequests
+}
+
 func GetTokenFromDeviceFlow(cfg *config.ClientConfig, ctx context.Context) (string, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -48,7 +61,7 @@ func GetTokenFromDeviceFlow(cfg *config.ClientConfig, ctx context.Context) (stri
 	stopWaiting := startAuthorizationWait(presentationWriter(ctx))
 	defer stopWaiting()
 
-	interval := max(time.Duration(startResp.Interval)*time.Second, 5*time.Second)
+	interval := max(time.Duration(startResp.Interval)*time.Second, deviceMinPollInterval)
 
 	// Device flows typically expire after 10-15 min on the IdP side.
 	// We cap polling at 15 min but also respect the caller's context.
@@ -63,14 +76,15 @@ func GetTokenFromDeviceFlow(cfg *config.ClientConfig, ctx context.Context) (stri
 		}
 
 		resp, err := postJSONContext[cliDeviceTokenResponse](ctx, tokenURL, reqBody)
-		if err != nil {
+		switch {
+		case isRateLimited(err):
+			interval += deviceSlowDownStep
+		case err != nil:
 			return "", fmt.Errorf("device token exchange failed: %w", err)
-		}
-		if !resp.Pending {
+		case !resp.Pending:
 			return resp.Token, nil
-		}
-		if resp.SlowDown {
-			interval += 5 * time.Second
+		case resp.SlowDown:
+			interval += deviceSlowDownStep
 		}
 		select {
 		case <-ctx.Done():

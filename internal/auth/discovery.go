@@ -58,22 +58,21 @@ func (d Discovery) Method(deviceRequested bool) (string, error) {
 		return "", err
 	}
 	offersDevice := slices.Contains(methods, authMethodDevice)
-	if deviceRequested {
-		if !offersDevice {
-			return "", errDeviceNotOffered
-		}
+	offersLoopback := slices.Contains(methods, authMethodLoopback)
+	switch {
+	case deviceRequested && offersDevice:
 		return authMethodDevice, nil
-	}
-	if slices.Contains(methods, authMethodLoopback) {
+	case deviceRequested && offersLoopback:
+		return "", errDeviceNotOffered
+	case offersLoopback:
 		return authMethodLoopback, nil
-	}
-	if offersDevice {
+	case offersDevice:
 		return "", errDeviceNeedsOptIn
-	}
-	if slices.Contains(methods, authMethodLegacyBrowser) {
+	case slices.Contains(methods, authMethodLegacyBrowser):
 		return "", errLegacyServer
+	default:
+		return "", errNoSupportedMethod
 	}
-	return "", errNoSupportedMethod
 }
 
 func (d Discovery) validate() error {
