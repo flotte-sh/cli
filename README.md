@@ -81,6 +81,16 @@ authentication flow, credential lifetime, and troubleshooting.
 - Certificates expire; established SSH sessions continue after expiry.
 - Use `flotte ssh --legacy user@host` for the older file-based certificate flow.
 
+## Signing In
+
+`flotte setup` and `flotte login` open your browser. After you sign in, Flotte shows a confirmation page that names the account. When you choose Continue, the CLI collects the session from the server, using a secret that never left your computer.
+
+- Confirm only a sign-in you started yourself by running a Flotte command just now.
+- If someone sends you a sign-in link, do not open it. Whoever started a sign-in receives the session of the person who confirms it.
+- The link works in any browser that reaches the Flotte server, so it also works from a container, WSL or a remote machine: open it on the device that has your browser.
+- Choose Cancel on the page to reject a sign-in; the CLI stops waiting.
+- This CLI needs a Flotte server that offers the `consent` sign-in. Older servers must be updated.
+
 ## Common Commands
 
 | Command | Purpose |

@@ -2,10 +2,15 @@ package account
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/flotte-sh/cli/internal/auth"
@@ -74,27 +79,45 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 		t.Fatalf("SaveToken: %v", err)
 	}
 
+	var challenge, state atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/cli-config":
-			fmt.Fprint(w, `{"authMode":"browser"}`)
+			fmt.Fprint(w, `{"authMode":"consent"}`)
 		case "/auth/me":
 			if r.Header.Get("X-flotte-token") == "fresh-token" {
 				fmt.Fprint(w, `{"authenticated":true,"email":"fresh@example.com"}`)
 				return
 			}
 			fmt.Fprint(w, `{"authenticated":false}`)
-		case "/auth/cli/browser/start":
-			fmt.Fprintf(w, `{"authUrl":%q,"flowId":"flow","secret":"secret"}`, "https://login.example.com")
-		case "/auth/cli/browser/token":
-			fmt.Fprint(w, `{"token":"fresh-token"}`)
+		case "/auth/cli/token":
+			sum := sha256.Sum256([]byte(r.PostFormValue("code_verifier")))
+			approved, _ := challenge.Load().(string)
+			if approved == "" {
+				http.Error(w, `{"error":"authorization_pending"}`, http.StatusBadRequest)
+				return
+			}
+			if r.PostFormValue("state") != state.Load() || base64.RawURLEncoding.EncodeToString(sum[:]) != approved {
+				http.Error(w, `{"error":"invalid_grant"}`, http.StatusBadRequest)
+				return
+			}
+			fmt.Fprint(w, `{"access_token":"fresh-token","token_type":"Bearer"}`)
 		default:
 			http.NotFound(w, r)
 		}
 	}))
 	defer server.Close()
 
-	stdout, _, err := executeLogin(t, server.URL)
+	stdout, _, err := executeLoginInBrowser(t, server.URL, func(loginURL string) {
+		parsed, parseErr := url.Parse(loginURL)
+		if parseErr != nil {
+			t.Errorf("login URL: %v", parseErr)
+			return
+		}
+		query := parsed.Query()
+		state.Store(query.Get("state"))
+		challenge.Store(query.Get("code_challenge"))
+	})
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
@@ -141,5 +164,48 @@ func executeLogin(t *testing.T, serverURL string) (string, string, error) {
 	cmd.SetOut(&stdout)
 	cmd.SetErr(&stderr)
 	err := cmd.ExecuteContext(t.Context())
+	return stdout.String(), stderr.String(), err
+}
+
+type loginOutput struct {
+	visit   func(loginURL string)
+	buf     bytes.Buffer
+	mu      sync.Mutex
+	visited bool
+}
+
+func (o *loginOutput) Write(p []byte) (int, error) {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	n, err := o.buf.Write(p)
+	if !o.visited {
+		for line := range strings.SplitSeq(o.buf.String(), "\n") {
+			if loginURL, ok := strings.CutPrefix(line, "Visit: "); ok && strings.Contains(o.buf.String(), line+"\n") {
+				o.visited = true
+				go o.visit(loginURL)
+				break
+			}
+		}
+	}
+	return n, err
+}
+
+func (o *loginOutput) String() string {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	return o.buf.String()
+}
+
+// executeLoginInBrowser runs the login command and hands the printed login
+// link to visit, which plays the part of the user's browser.
+func executeLoginInBrowser(t *testing.T, serverURL string, visit func(loginURL string)) (string, string, error) {
+	t.Helper()
+	root := &Root{Config: &config.ClientConfig{FlotteUrl: serverURL}}
+	cmd := NewLoginCmd(root)
+	stdout := &loginOutput{visit: visit}
+	var stderr bytes.Buffer
+	cmd.SetOut(stdout)
+	cmd.SetErr(&stderr)
+	err := cmd.ExecuteContext(auth.WithPresentation(t.Context(), stdout, true))
 	return stdout.String(), stderr.String(), err
 }

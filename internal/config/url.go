@@ -12,7 +12,11 @@ func NormalizeFlotteURL(raw string) (string, error) {
 	if trimmed == "" {
 		return "", fmt.Errorf("server URL is required")
 	}
-	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+	if scheme, rest, found := strings.Cut(trimmed, "://"); found && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")) {
+		trimmed = strings.ToLower(scheme) + "://" + rest
+	} else if found {
+		return "", fmt.Errorf("unsupported scheme %q", scheme)
+	} else {
 		trimmed = "https://" + trimmed
 	}
 

@@ -83,3 +83,15 @@ func TestJoinEndpoint(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeFlotteURLSchemeCase(t *testing.T) {
+	got, err := NormalizeFlotteURL("HTTPS://flotte.example/base/")
+	if err != nil || got != "https://flotte.example/base" {
+		t.Fatalf("NormalizeFlotteURL = %q, %v", got, err)
+	}
+	for _, raw := range []string{"file:///etc/passwd", "ftp://flotte.example", "javascript://flotte.example"} {
+		if got, err := NormalizeFlotteURL(raw); err == nil {
+			t.Errorf("NormalizeFlotteURL(%q) = %q, want an error", raw, got)
+		}
+	}
+}

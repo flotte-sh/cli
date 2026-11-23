@@ -37,7 +37,7 @@ func showLoginURL(ctx context.Context) bool {
 }
 
 var (
-	browserToken = GetTokenFromBrowserFlow
+	consentToken = GetTokenFromConsentFlow
 	deviceToken  = GetTokenFromDeviceFlow
 )
 
@@ -72,9 +72,9 @@ func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bo
 		method string
 	)
 	switch authMode {
-	case authMethodBrowser:
-		method = authMethodBrowser
-		token, err = browserToken(cfg, ctx)
+	case authMethodConsent:
+		method = "browser"
+		token, err = consentToken(cfg, ctx)
 	case authMethodDevice:
 		method = "device flow"
 		token, err = deviceToken(cfg, ctx)
