@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -36,10 +35,7 @@ func showLoginURL(ctx context.Context) bool {
 	return !ok || show
 }
 
-var (
-	consentToken = GetTokenFromConsentFlow
-	deviceToken  = GetTokenFromDeviceFlow
-)
+var consentToken = GetTokenFromConsentFlow
 
 func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bool) (string, error) {
 	const operation = "initAuth"
@@ -66,23 +62,12 @@ func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bo
 		return "", clierrors.Wrap(operation, discoveryErr, "failed to discover server authentication methods")
 	}
 
-	var (
-		token  string
-		err    error
-		method string
-	)
-	switch authMode {
-	case authMethodConsent:
-		method = "browser"
-		token, err = consentToken(cfg, ctx)
-	case authMethodDevice:
-		method = "device flow"
-		token, err = deviceToken(cfg, ctx)
-	default:
+	if authMode != authMethodConsent {
 		return "", clierrors.Newf(operation, nil, "unsupported server authentication method %q", authMode)
 	}
+	token, err := consentToken(cfg, ctx)
 	if err != nil {
-		return "", clierrors.Wrap(operation, err, fmt.Sprintf("%s authentication failed. Retry with 'flotte login'.", method))
+		return "", clierrors.Wrap(operation, err, "browser authentication failed. Retry with 'flotte login'.")
 	}
 
 	if err := SaveToken(token); err != nil {

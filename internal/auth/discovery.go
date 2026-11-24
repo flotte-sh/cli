@@ -22,11 +22,11 @@ type Discovery struct {
 
 const (
 	authMethodConsent       = "consent"
-	authMethodDevice        = "device"
+	authMethodLegacyDevice  = "device"
 	authMethodLegacyBrowser = "browser"
 )
 
-var errLegacyServer = errors.New("this Flotte server only offers a browser sign-in that this CLI no longer supports for security reasons - update the Flotte server")
+var errLegacyServer = errors.New("this Flotte server only offers a sign-in that this CLI no longer supports for security reasons - update the Flotte server")
 
 func (d Discovery) Method() (string, error) {
 	methods := d.AuthMethods
@@ -41,15 +41,10 @@ func (d Discovery) Method() (string, error) {
 	if preferred != "" && !slices.Contains(methods, preferred) {
 		return "", fmt.Errorf("preferred authentication method %q is not advertised", preferred)
 	}
-	if preferred == authMethodConsent || preferred == authMethodDevice {
-		return preferred, nil
+	if slices.Contains(methods, authMethodConsent) {
+		return authMethodConsent, nil
 	}
-	for _, method := range []string{authMethodConsent, authMethodDevice} {
-		if slices.Contains(methods, method) {
-			return method, nil
-		}
-	}
-	if slices.Contains(methods, authMethodLegacyBrowser) {
+	if slices.Contains(methods, authMethodLegacyBrowser) || slices.Contains(methods, authMethodLegacyDevice) {
 		return "", errLegacyServer
 	}
 	return "", fmt.Errorf("server advertises no supported authentication methods")

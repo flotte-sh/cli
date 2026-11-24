@@ -54,8 +54,8 @@ func TestJoinEndpoint(t *testing.T) {
 		{
 			name:     "base path deployment",
 			baseURL:  "https://example.com/flotte/",
-			endpoint: "/auth/cli/device/start",
-			want:     "https://example.com/flotte/auth/cli/device/start",
+			endpoint: "/auth/cli/token",
+			want:     "https://example.com/flotte/auth/cli/token",
 		},
 		{
 			name:     "endpoint without leading slash",
