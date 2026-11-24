@@ -17,10 +17,6 @@ func startBrowserHotkeys(ctx context.Context, loginURL string, out io.Writer, ca
 	return startAuthHotkeys(ctx, loginURL, out, cancel)
 }
 
-func startAuthorizationHotkeys(ctx context.Context, cancel context.CancelFunc) func() {
-	return startAuthHotkeys(ctx, "", io.Discard, cancel)
-}
-
 func startAuthHotkeys(ctx context.Context, loginURL string, out io.Writer, cancel context.CancelFunc) func() {
 	if runtime.GOOS == "windows" || !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
 		return func() {}
