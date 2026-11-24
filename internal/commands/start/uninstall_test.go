@@ -2,15 +2,34 @@ package start
 
 import (
 	"bytes"
+	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
 
 	"github.com/flotte-sh/cli/integrations/openssh"
+	"github.com/flotte-sh/cli/internal/auth"
+	"github.com/flotte-sh/cli/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 )
 
+func executeUninstall(t *testing.T) {
+	t.Helper()
+	cmd := NewUninstallCmd()
+	cmd.SetOut(&bytes.Buffer{})
+	cmd.SetErr(&bytes.Buffer{})
+	cmd.SetArgs(nil)
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestUninstallIntegrations(t *testing.T) {
+	keyring.MockInit()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -32,16 +51,15 @@ func TestUninstallIntegrations(t *testing.T) {
 	if _, err := openssh.InstallConfig(); err != nil {
 		t.Fatal(err)
 	}
-	for attempt := 0; attempt < 2; attempt++ {
+	if err := auth.SaveToken("cached-token"); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
 		cmd := NewUninstallCmd()
 		if cmd.GroupID != "start" {
 			t.Fatal("uninstall must share setup's group")
 		}
-		cmd.SetOut(&bytes.Buffer{})
-		cmd.SetArgs(nil)
-		if err := cmd.Execute(); err != nil {
-			t.Fatal(err)
-		}
+		executeUninstall(t)
 	}
 	for _, shell := range shells {
 		path, err := completionPath(shell)
@@ -56,20 +74,95 @@ func TestUninstallIntegrations(t *testing.T) {
 	if err != nil || string(content) != otherConfig {
 		t.Fatalf("SSH config not preserved: %q, %v", content, err)
 	}
+	if token, err := auth.LoadToken(); err == nil {
+		t.Fatalf("session remains: %q", token)
+	}
 }
 
 func TestUninstallWithoutIntegrations(t *testing.T) {
+	keyring.MockInit()
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
-	cmd := NewUninstallCmd()
-	cmd.SetOut(&bytes.Buffer{})
-	cmd.SetArgs(nil)
-	if err := cmd.Execute(); err != nil {
-		t.Fatal(err)
-	}
+	executeUninstall(t)
 	entries, err := os.ReadDir(home)
 	if err != nil || len(entries) != 0 {
 		t.Fatalf("uninstall created files: %v, %v", entries, err)
+	}
+}
+
+func TestUninstallRevokesAndRemovesSession(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		keyringError error
+		status       int
+	}{
+		{name: "keyring", status: http.StatusNoContent},
+		{name: "file fallback", keyringError: errors.New("keyring unavailable"), status: http.StatusNoContent},
+		{name: "revocation fails", status: http.StatusInternalServerError},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.keyringError != nil {
+				keyring.MockInitWithError(test.keyringError)
+			} else {
+				keyring.MockInit()
+			}
+			home := t.TempDir()
+			t.Setenv("HOME", home)
+			t.Setenv("USERPROFILE", home)
+			var revoked atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Method == http.MethodPost && r.URL.Path == "/auth/logout" && r.Header.Get("X-flotte-token") == "cached-token" {
+					revoked.Add(1)
+				}
+				w.WriteHeader(test.status)
+			}))
+			defer server.Close()
+			cfg := config.ClientConfig{FlotteUrl: server.URL}
+			if err := cfg.Save(); err != nil {
+				t.Fatal(err)
+			}
+			if err := auth.SaveToken("cached-token"); err != nil {
+				t.Fatal(err)
+			}
+
+			executeUninstall(t)
+
+			if revoked.Load() != 1 {
+				t.Fatalf("revocation requests = %d, want 1", revoked.Load())
+			}
+			if token, err := auth.LoadToken(); err == nil {
+				t.Fatalf("session remains: %q", token)
+			}
+			if _, err := os.Stat(filepath.Join(home, ".flotte", ".token.json")); !os.IsNotExist(err) {
+				t.Fatalf("token file remains: %v", err)
+			}
+			if _, err := config.LoadOrCreate(); err != nil {
+				t.Fatalf("account configuration removed: %v", err)
+			}
+		})
+	}
+}
+
+func TestUninstallRemovesSessionWhenServerUnreachable(t *testing.T) {
+	keyring.MockInit()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	server := httptest.NewServer(http.NotFoundHandler())
+	unreachableURL := server.URL
+	server.Close()
+	cfg := config.ClientConfig{FlotteUrl: unreachableURL}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveToken("cached-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	executeUninstall(t)
+
+	if token, err := auth.LoadToken(); err == nil {
+		t.Fatalf("session remains: %q", token)
 	}
 }
