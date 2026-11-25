@@ -53,7 +53,7 @@ func NewLoginCmd(r *Root) *cobra.Command {
 	}
 }
 
-func NewLogoutCmd(r *Root) *cobra.Command {
+func NewLogoutCmd(_ *Root) *cobra.Command {
 	return &cobra.Command{
 		Use:   "logout",
 		Short: "Logout and delete cached authentication token",
@@ -62,13 +62,7 @@ func NewLogoutCmd(r *Root) *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			const operation = "logout"
 
-			if cfg, _ := r.ClientConfig(); cfg != nil {
-				if token, err := auth.LoadToken(); err == nil && token != "" {
-					_ = client.RevokeToken(cfg, token)
-				}
-			}
-
-			if err := auth.DeleteToken(); err != nil {
+			if err := common.EndSession(c.ErrOrStderr()); err != nil {
 				return clierrors.Wrap(operation, err, "failed to delete cached token")
 			}
 			fmt.Fprintln(c.OutOrStdout(), "Successfully logged out.")

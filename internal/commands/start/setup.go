@@ -81,7 +81,11 @@ func NewSetupCmd(r *Root) *cobra.Command {
 			}
 
 			if setupConfig.BaseURL != "" {
-				flotteURL, err = config.NormalizeFlotteURL(setupConfig.BaseURL)
+				flotteURL, err = config.ReportedServerURL(flotteURL, setupConfig.BaseURL)
+				var otherServer *config.OtherServerError
+				if errors.As(err, &otherServer) {
+					return clierrors.Newf(operation, err, "%s. Setup did not switch to it. If your administrator gave you that address, run 'flotte setup %s'. Otherwise report this to your administrator.", err, otherServer.Reported)
+				}
 				if err != nil {
 					return clierrors.Wrap(operation, err, "server returned an invalid base URL")
 				}

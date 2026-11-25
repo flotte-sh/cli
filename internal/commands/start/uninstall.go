@@ -26,7 +26,7 @@ func NewUninstallCmd() *cobra.Command {
 			if err := openssh.RemoveConfigIfPresent(); err != nil {
 				failures = append(failures, err)
 			}
-			if err := common.EndSession(); err != nil {
+			if err := common.EndSession(cmd.ErrOrStderr()); err != nil {
 				failures = append(failures, fmt.Errorf("remove session: %w", err))
 			}
 			if err := errors.Join(failures...); err != nil {

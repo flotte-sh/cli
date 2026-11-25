@@ -2,6 +2,7 @@ package auth
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -20,30 +21,58 @@ const (
 	keyringUser    = "opaque-token"
 )
 
-type cachedToken struct {
-	Token string `json:"token"`
+type Session struct {
+	Token  string `json:"token"`
+	Server string `json:"server,omitempty"`
 }
 
-func LoadToken() (string, error) {
-	if token, err := loadFromKeyring(); err == nil {
-		return token, nil
+var errOtherServer = errors.New("the cached session does not belong to this Flotte server")
+
+func LoadSession() (Session, error) {
+	if session, err := loadFromKeyring(); err == nil {
+		return session, nil
 	}
 	return loadFromFile()
 }
 
-func SaveToken(token string) error {
-	if err := saveToKeyring(token); err != nil {
-		printAuthWarning(os.Stderr, "Keyring unavailable; falling back to file storage", err)
-		return saveToFile(token)
+func LoadToken(serverURL string) (string, error) {
+	session, err := LoadSession()
+	if err != nil {
+		return "", err
+	}
+	if !sameServer(session.Server, serverURL) {
+		return "", errOtherServer
+	}
+	return session.Token, nil
+}
+
+func sameServer(left, right string) bool {
+	left, err := config.NormalizeFlotteURL(left)
+	if err != nil {
+		return false
+	}
+	right, err = config.NormalizeFlotteURL(right)
+	return err == nil && left == right
+}
+
+func SaveToken(serverURL, token string) error {
+	server, err := config.NormalizeFlotteURL(serverURL)
+	if err != nil {
+		return fmt.Errorf("cannot tie the session to the server URL: %w", err)
+	}
+	session := Session{Token: token, Server: server}
+	if err := saveToKeyring(session); err != nil {
+		PrintWarning(os.Stderr, "Keyring unavailable; falling back to file storage", err)
+		return saveToFile(session)
 	}
 	if err := deleteFromFile(); err != nil {
 		// best-effort cleanup: warn but keep the keyring-saved token
-		printAuthWarning(os.Stderr, "Could not remove the token file", err)
+		PrintWarning(os.Stderr, "Could not remove the token file", err)
 	}
 	return nil
 }
 
-func printAuthWarning(out io.Writer, message string, err error) {
+func PrintWarning(out io.Writer, message string, err error) {
 	text := fmt.Sprintf("! WARNING: %s: %v\n", message, err)
 	file, ok := out.(*os.File)
 	if ok && term.IsTerminal(int(file.Fd())) && os.Getenv("TERM") != "" && os.Getenv("TERM") != "dumb" && os.Getenv("NO_COLOR") == "" && runtime.GOOS != "windows" && !testing.Testing() {
@@ -69,19 +98,28 @@ func DeleteToken() error {
 	return nil
 }
 
-func loadFromKeyring() (string, error) {
+func loadFromKeyring() (Session, error) {
 	secret, err := keyring.Get(keyringService, keyringUser)
 	if err != nil {
-		return "", err
+		return Session{}, err
 	}
 	if secret == "" {
-		return "", fmt.Errorf("empty token in keyring")
+		return Session{}, fmt.Errorf("empty token in keyring")
 	}
-	return secret, nil
+	var session Session
+	if err := json.Unmarshal([]byte(secret), &session); err != nil || session.Token == "" {
+		// Older CLIs stored the bare token. Without its server it is never sent anywhere.
+		return Session{Token: secret}, nil
+	}
+	return session, nil
 }
 
-func saveToKeyring(token string) error {
-	return keyring.Set(keyringService, keyringUser, token)
+func saveToKeyring(session Session) error {
+	secret, err := json.Marshal(session)
+	if err != nil {
+		return err
+	}
+	return keyring.Set(keyringService, keyringUser, string(secret))
 }
 
 func deleteFromKeyring() error {
@@ -92,28 +130,28 @@ func deleteFromKeyring() error {
 	return err
 }
 
-func loadFromFile() (string, error) {
+func loadFromFile() (Session, error) {
 	dir, err := config.GetConfigDir()
 	if err != nil {
-		return "", err
+		return Session{}, err
 	}
 	fp := filepath.Join(dir, tokenCacheFile)
 	f, err := os.Open(fp) //#nosec G304
 	if err != nil {
-		return "", err
+		return Session{}, err
 	}
 	defer f.Close()
-	var ct cachedToken
-	if err := json.NewDecoder(f).Decode(&ct); err != nil {
-		return "", err
+	var session Session
+	if err := json.NewDecoder(f).Decode(&session); err != nil {
+		return Session{}, err
 	}
-	if ct.Token == "" {
-		return "", fmt.Errorf("empty token cache")
+	if session.Token == "" {
+		return Session{}, fmt.Errorf("empty token cache")
 	}
-	return ct.Token, nil
+	return session, nil
 }
 
-func saveToFile(token string) error {
+func saveToFile(session Session) error {
 	dir, err := config.GetConfigDir()
 	if err != nil {
 		return err
@@ -127,10 +165,9 @@ func saveToFile(token string) error {
 		return err
 	}
 	defer f.Close()
-	ct := cachedToken{Token: token}
 	enc := json.NewEncoder(f)
 	enc.SetIndent("", "  ")
-	return enc.Encode(&ct)
+	return enc.Encode(&session)
 }
 
 func deleteFromFile() error {

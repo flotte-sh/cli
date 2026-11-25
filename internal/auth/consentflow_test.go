@@ -11,16 +11,20 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/flotte-sh/cli/internal/config"
 )
 
+const consentTestTicket = "1795651200.ticket-from-the-server"
+
 type consentTestServer struct {
 	*httptest.Server
 	answers []consentTestAnswer
 	forms   []url.Values
+	starts  []url.Values
 	mu      sync.Mutex
 }
 
@@ -41,11 +45,19 @@ func newConsentTestServer(t *testing.T, answers ...consentTestAnswer) *consentTe
 	t.Helper()
 	s := &consentTestServer{answers: answers}
 	s.Server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		if r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/auth/cli/start") {
+			s.mu.Lock()
+			s.starts = append(s.starts, r.PostForm)
+			s.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(`{"ticket":"` + consentTestTicket + `"}`))
+			return
+		}
 		if r.URL.Path != "/auth/cli/token" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
 			return
 		}
-		_ = r.ParseForm()
 		s.mu.Lock()
 		s.forms = append(s.forms, r.PostForm)
 		answer := s.answers[min(len(s.forms), len(s.answers))-1]
@@ -71,34 +83,54 @@ func fastConsentPolling(t *testing.T) {
 	t.Cleanup(func() { consentPollInterval = original })
 }
 
+func (s *consentTestServer) startRequests() []url.Values {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]url.Values(nil), s.starts...)
+}
+
 func startTestConsentLogin(t *testing.T, serverURL string) *consentLogin {
 	t.Helper()
-	login, err := startConsentLogin(serverURL)
+	login, err := newConsentLogin(serverURL)
 	if err != nil {
-		t.Fatalf("startConsentLogin: %v", err)
+		t.Fatalf("newConsentLogin: %v", err)
 	}
 	return login
 }
 
 func TestConsentLoginAuthorizeRequest(t *testing.T) {
-	login := startTestConsentLogin(t, "https://flotte.example/base")
+	server := newConsentTestServer(t)
+	login := startTestConsentLogin(t, server.URL+"/base")
+	if login.authorizeURL != "" {
+		t.Fatalf("a link existed before the server issued its ticket: %s", login.authorizeURL)
+	}
+	if err := login.requestLink(t.Context()); err != nil {
+		t.Fatalf("requestLink: %v", err)
+	}
 	parsed, err := url.Parse(login.authorizeURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsed.Scheme != "https" || parsed.Host != "flotte.example" || parsed.Path != "/base/auth/cli/authorize" {
+	if "http://"+parsed.Host != server.URL || parsed.Path != "/base/auth/cli/authorize" {
 		t.Fatalf("authorize URL = %s", login.authorizeURL)
 	}
-	query := parsed.Query()
 	sum := sha256.Sum256([]byte(login.verifier))
 	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
-	want := url.Values{
+	asked := url.Values{
 		"client_id":             {"flotte-cli"},
 		"state":                 {login.state},
 		"code_challenge":        {challenge},
 		"code_challenge_method": {"S256"},
 	}
-	if query.Encode() != want.Encode() {
+	starts := server.startRequests()
+	if len(starts) != 1 || starts[0].Encode() != asked.Encode() {
+		t.Fatalf("start requests = %v, want one with %v", starts, asked)
+	}
+	want := url.Values{"ticket": {consentTestTicket}}
+	for name, values := range asked {
+		want[name] = values
+	}
+	if query := parsed.Query(); query.Encode() != want.Encode() {
 		t.Fatalf("authorize query = %v, want %v", query, want)
 	}
 	if strings.Contains(login.authorizeURL, login.verifier) {
@@ -108,9 +140,89 @@ func TestConsentLoginAuthorizeRequest(t *testing.T) {
 		t.Fatalf("state or verifier too short: %d, %d", len(login.state), len(login.verifier))
 	}
 
-	other := startTestConsentLogin(t, "https://flotte.example/base")
+	other := startTestConsentLogin(t, server.URL+"/base")
 	if other.state == login.state || other.verifier == login.verifier {
 		t.Fatal("two sign-ins share a secret")
+	}
+}
+
+func TestConsentLoginOpensNoLinkWithoutATicketFromTheServer(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		message string
+		status  int
+	}{
+		{name: "older server", status: http.StatusNotFound, body: `not found`, message: "update the Flotte server"},
+		{name: "removed sign-in", status: http.StatusGone, body: `{"error":"gone"}`, message: "update the Flotte server"},
+		{name: "throttled", status: http.StatusTooManyRequests, body: ``, message: "too many sign-ins"},
+		{name: "server error", status: http.StatusInternalServerError, body: `oops`, message: "HTTP 500"},
+		{name: "not json", status: http.StatusOK, body: `<html>`, message: "invalid answer"},
+		{name: "no ticket", status: http.StatusOK, body: `{}`, message: "invalid answer"},
+		{name: "ticket that would add a parameter", status: http.StatusOK, body: `{"ticket":"1.a&state=other"}`, message: "invalid answer"},
+		{name: "ticket with a line break", status: http.StatusOK, body: `{"ticket":"1.a\nb"}`, message: "invalid answer"},
+		{name: "overlong ticket", status: http.StatusOK, body: `{"ticket":"` + strings.Repeat("a", maxLinkTicketLength+1) + `"}`, message: "invalid answer"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var polls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path != "/auth/cli/start" {
+					polls.Add(1)
+					return
+				}
+				w.WriteHeader(tc.status)
+				_, _ = w.Write([]byte(tc.body))
+			}))
+			defer server.Close()
+
+			opened := false
+			originalBrowser := openBrowser
+			openBrowser = func(string) error {
+				opened = true
+				return nil
+			}
+			t.Cleanup(func() { openBrowser = originalBrowser })
+
+			var out bytes.Buffer
+			token, err := GetTokenFromConsentFlow(&config.ClientConfig{FlotteUrl: server.URL}, WithPresentation(t.Context(), &out, true))
+			if err == nil || token != "" || !strings.Contains(err.Error(), tc.message) {
+				t.Fatalf("GetTokenFromConsentFlow = %q, %v, want an error mentioning %q", token, err, tc.message)
+			}
+			if opened || strings.Contains(out.String(), "/auth/cli/authorize") || polls.Load() != 0 {
+				t.Fatalf("a sign-in went ahead without a ticket: opened=%v polls=%d output=%q", opened, polls.Load(), out.String())
+			}
+		})
+	}
+}
+
+func TestConsentLoginNeverFollowsRedirectsWhenAskingForTheLink(t *testing.T) {
+	var elsewhereHits atomic.Int32
+	elsewhere := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		elsewhereHits.Add(1)
+		_, _ = w.Write([]byte(`{"ticket":"` + consentTestTicket + `"}`))
+	}))
+	defer elsewhere.Close()
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, elsewhere.URL, http.StatusTemporaryRedirect)
+	}))
+	defer server.Close()
+
+	login := startTestConsentLogin(t, server.URL)
+	if err := login.requestLink(t.Context()); err == nil || login.authorizeURL != "" {
+		t.Fatalf("requestLink = %v with link %q, want a refusal and no link", err, login.authorizeURL)
+	}
+	if elsewhereHits.Load() != 0 {
+		t.Fatal("the sign-in request was sent to another address")
+	}
+}
+
+func TestConsentLoginReportsAnUnreachableServerBeforeOpeningTheBrowser(t *testing.T) {
+	server := httptest.NewServer(http.NotFoundHandler())
+	server.Close()
+
+	login := startTestConsentLogin(t, server.URL)
+	if err := login.requestLink(t.Context()); err == nil || !strings.Contains(err.Error(), "failed to reach the server to start sign-in") {
+		t.Fatalf("requestLink on a dead server = %v", err)
 	}
 }
 
@@ -260,9 +372,9 @@ func TestConsentLoginWaitHonoursCancellationAndTimeout(t *testing.T) {
 
 func TestConsentLoginRefusesServerURLsABrowserMustNotOpen(t *testing.T) {
 	for _, serverURL := range []string{"", "javascript:alert(1)", "file:///etc/passwd", "ftp://flotte.example", "//flotte.example"} {
-		login, err := startConsentLogin(serverURL)
+		login, err := newConsentLogin(serverURL)
 		if err == nil {
-			t.Errorf("startConsentLogin(%q) built %q", serverURL, login.authorizeURL)
+			t.Errorf("newConsentLogin(%q) prepared a sign-in at %q", serverURL, login.authorizeEndpoint)
 		}
 	}
 }
@@ -291,6 +403,9 @@ func TestGetTokenFromConsentFlowEndToEnd(t *testing.T) {
 	state := server.requests()[0].Get("state")
 	if !strings.Contains(opened, "state="+state) {
 		t.Fatal("the terminal asked about another sign-in than the one it opened")
+	}
+	if !strings.Contains(opened, "ticket="+consentTestTicket) {
+		t.Fatalf("the opened link %q lacks the ticket the server issued", opened)
 	}
 	if !strings.Contains(out.String(), opened) {
 		t.Fatalf("instructions = %q", out.String())

@@ -71,3 +71,37 @@ func JoinEndpoint(baseURL string, endpointPath string) (string, error) {
 	parsed.RawPath = ""
 	return parsed.String(), nil
 }
+
+func ReportedServerURL(enteredURL, reportedURL string) (string, error) {
+	reported, err := NormalizeFlotteURL(reportedURL)
+	if err != nil {
+		return "", err
+	}
+	entered, err := NormalizeFlotteURL(enteredURL)
+	if err != nil {
+		return "", err
+	}
+	enteredParts, err := url.Parse(entered)
+	if err != nil {
+		return "", err
+	}
+	reportedParts, err := url.Parse(reported)
+	if err != nil {
+		return "", err
+	}
+	sameHost := strings.EqualFold(enteredParts.Host, reportedParts.Host)
+	sameOrSaferScheme := reportedParts.Scheme == enteredParts.Scheme || reportedParts.Scheme == "https"
+	if !sameHost || !sameOrSaferScheme {
+		return "", &OtherServerError{Entered: entered, Reported: reported}
+	}
+	return reported, nil
+}
+
+type OtherServerError struct {
+	Entered  string
+	Reported string
+}
+
+func (e *OtherServerError) Error() string {
+	return fmt.Sprintf("the server at %s reports %s as its address", e.Entered, e.Reported)
+}

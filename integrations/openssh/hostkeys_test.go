@@ -28,7 +28,7 @@ func TestSSHHostkeysUnknownServerIgnoresAgentProvisioningFailure(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
 	keyring.MockInit()
-	if err := auth.SaveToken("cached-token"); err != nil {
+	if err := auth.SaveToken("https://flotte.example.com", "cached-token"); err != nil {
 		t.Fatal(err)
 	}
 	private, err := LoadCLIPrivateKey()

@@ -89,7 +89,16 @@ authentication flow, credential lifetime, and troubleshooting.
 - If someone sends you a sign-in link, do not open it. Whoever started a sign-in receives the session of the person who confirms it.
 - The link works in any browser that reaches the Flotte server, so it also works from a container, WSL or a remote machine: open it on the device that has your browser.
 - Choose Cancel on the page to reject a sign-in; the CLI stops waiting.
+- A sign-in link works for 5 minutes. After that the server refuses it; run the command again.
+- Open the link yourself. A link that another web page opens, for example from web mail or a browser-based terminal, is refused: paste it into the address bar.
 - This CLI needs a Flotte server that offers the `consent` sign-in. Older servers must be updated.
+
+The CLI keeps one session and sends it only to the server that issued it:
+
+- After pointing the CLI at another server, sign in again. A session saved by an older CLI is not tied to a server and is no longer used.
+- `flotte setup` uses the address a server reports for itself only when it is on the host you entered. Otherwise it stops and prints the command to run.
+- Requests that carry the session never follow a redirect. If the server address redirects, run `flotte setup` with the address it redirects to.
+- `flotte logout` ends the session on the server that issued it and removes it from this computer. If the server cannot be reached, the session is still removed locally and the CLI warns that it can stay valid on the server until it expires.
 
 ## Common Commands
 
@@ -99,11 +108,14 @@ authentication flow, credential lifetime, and troubleshooting.
 | `flotte config --show` | Show configuration |
 | `flotte completion install [bash\|zsh\|fish]` | Install shell completion |
 | `flotte completion uninstall [bash\|zsh\|fish]` | Remove shell completion |
-| `flotte uninstall` | Remove managed SSH integration and shell completions |
+| `flotte uninstall` | Remove managed SSH integration, shell completions and the session |
 | `flotte <command> --help` | Show options and examples |
 
 `flotte uninstall` keeps the binary, account configuration, SSH keys, and
-unrelated SSH settings. Restart your shell after removing completions.
+unrelated SSH settings. It always removes the session from this computer and
+ends it on the server; if the server cannot be reached it prints a warning,
+because the session can then stay valid there until it expires. Restart your
+shell after removing completions.
 
 ## Requesting an Integration
 

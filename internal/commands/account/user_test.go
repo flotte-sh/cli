@@ -21,9 +21,6 @@ import (
 func TestLoginAcceptsValidCachedSession(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
-	if err := auth.SaveToken("cached-token"); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/auth/me" || r.Header.Get("X-flotte-token") != "cached-token" {
@@ -33,6 +30,9 @@ func TestLoginAcceptsValidCachedSession(t *testing.T) {
 		fmt.Fprint(w, `{"authenticated":true,"email":"user@example.com"}`)
 	}))
 	defer server.Close()
+	if err := auth.SaveToken(server.URL, "cached-token"); err != nil {
+		t.Fatalf("SaveToken: %v", err)
+	}
 
 	stdout, stderr, err := executeLogin(t, server.URL)
 	if err != nil {
@@ -49,20 +49,20 @@ func TestLoginAcceptsValidCachedSession(t *testing.T) {
 func TestLoginPreservesCachedSessionWhenValidationFails(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
-	if err := auth.SaveToken("cached-token"); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
 	}))
 	defer server.Close()
+	if err := auth.SaveToken(server.URL, "cached-token"); err != nil {
+		t.Fatalf("SaveToken: %v", err)
+	}
 
 	_, _, err := executeLogin(t, server.URL)
 	if err == nil || !strings.Contains(err.Error(), "failed to validate cached session") {
 		t.Fatalf("login error = %v", err)
 	}
-	got, loadErr := auth.LoadToken()
+	got, loadErr := auth.LoadToken(server.URL)
 	if loadErr != nil {
 		t.Fatalf("LoadToken: %v", loadErr)
 	}
@@ -75,9 +75,6 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir())
-	if err := auth.SaveToken("stale-token"); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
 
 	var challenge, state atomic.Value
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -90,6 +87,8 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 				return
 			}
 			fmt.Fprint(w, `{"authenticated":false}`)
+		case "/auth/cli/start":
+			fmt.Fprint(w, `{"ticket":"1795651200.ticket"}`)
 		case "/auth/cli/token":
 			sum := sha256.Sum256([]byte(r.PostFormValue("code_verifier")))
 			approved, _ := challenge.Load().(string)
@@ -107,6 +106,9 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 		}
 	}))
 	defer server.Close()
+	if err := auth.SaveToken(server.URL, "stale-token"); err != nil {
+		t.Fatalf("SaveToken: %v", err)
+	}
 
 	stdout, _, err := executeLoginInBrowser(t, server.URL, func(loginURL string) {
 		parsed, parseErr := url.Parse(loginURL)
@@ -124,7 +126,7 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 	if !strings.Contains(stdout, "Logged in as fresh@example.com") || !strings.Contains(stdout, "Successfully authenticated.") {
 		t.Fatalf("stdout = %q", stdout)
 	}
-	got, loadErr := auth.LoadToken()
+	got, loadErr := auth.LoadToken(server.URL)
 	if loadErr != nil {
 		t.Fatalf("LoadToken: %v", loadErr)
 	}
@@ -136,21 +138,21 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 func TestLoginDeletesSessionInvalidatedDuringIdentityLookup(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("HOME", t.TempDir())
-	if err := auth.SaveToken("cached-token"); err != nil {
-		t.Fatalf("SaveToken: %v", err)
-	}
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
 		fmt.Fprintf(w, `{"authenticated":%t}`, requests == 1)
 	}))
 	defer server.Close()
+	if err := auth.SaveToken(server.URL, "cached-token"); err != nil {
+		t.Fatalf("SaveToken: %v", err)
+	}
 
 	_, _, err := executeLogin(t, server.URL)
 	if err == nil || !strings.Contains(err.Error(), "session expired during login") {
 		t.Fatalf("login error = %v", err)
 	}
-	if _, loadErr := auth.LoadToken(); loadErr == nil {
+	if _, loadErr := auth.LoadToken(server.URL); loadErr == nil {
 		t.Fatal("expired token was not deleted")
 	}
 }

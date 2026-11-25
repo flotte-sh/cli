@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 func TestNormalizeFlotteURL(t *testing.T) {
 	tests := []struct {
@@ -93,5 +96,41 @@ func TestNormalizeFlotteURLSchemeCase(t *testing.T) {
 		if got, err := NormalizeFlotteURL(raw); err == nil {
 			t.Errorf("NormalizeFlotteURL(%q) = %q, want an error", raw, got)
 		}
+	}
+}
+
+func TestReportedServerURL(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		entered  string
+		reported string
+		want     string
+	}{
+		{name: "same address", entered: "https://flotte.example.com", reported: "https://flotte.example.com/", want: "https://flotte.example.com"},
+		{name: "base path on the same host", entered: "https://example.com/flotte/login", reported: "https://example.com/flotte", want: "https://example.com/flotte"},
+		{name: "upgrade to https on the same host", entered: "http://flotte.example.com", reported: "https://flotte.example.com", want: "https://flotte.example.com"},
+		{name: "host in another case", entered: "https://Flotte.Example.com", reported: "https://flotte.example.com", want: "https://flotte.example.com"},
+		{name: "another host", entered: "https://flotte.example.com", reported: "https://attacker.example"},
+		{name: "host that only starts the same", entered: "https://flotte.example.com", reported: "https://flotte.example.com.attacker.example"},
+		{name: "another port", entered: "https://flotte.example.com", reported: "https://flotte.example.com:8443"},
+		{name: "downgrade to http", entered: "https://flotte.example.com", reported: "http://flotte.example.com"},
+		{name: "host hidden in the scheme", entered: "http://localhost:3001", reported: "https://attacker.example/a://localhost:3001"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := ReportedServerURL(test.entered, test.reported)
+			if test.want == "" {
+				var otherServer *OtherServerError
+				if !errors.As(err, &otherServer) || got != "" {
+					t.Fatalf("ReportedServerURL(%q, %q) = %q, %v; want it refused as another server", test.entered, test.reported, got, err)
+				}
+				return
+			}
+			if err != nil || got != test.want {
+				t.Fatalf("ReportedServerURL(%q, %q) = %q, %v; want %q", test.entered, test.reported, got, err, test.want)
+			}
+		})
+	}
+	if _, err := ReportedServerURL("https://flotte.example.com", "ftp://flotte.example.com"); err == nil {
+		t.Fatal("an address with an unsupported scheme was accepted")
 	}
 }

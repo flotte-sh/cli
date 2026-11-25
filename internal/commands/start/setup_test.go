@@ -4,11 +4,18 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/flotte-sh/cli/internal/auth"
+	"github.com/flotte-sh/cli/internal/config"
 	"github.com/spf13/cobra"
+	"github.com/zalando/go-keyring"
 )
 
 func TestInteractiveCertificateMode(t *testing.T) {
@@ -172,5 +179,94 @@ func TestReadSetupDecision(t *testing.T) {
 		if got != test.want || (err != nil) != test.invalid {
 			t.Errorf("input %q: got %t, %v", test.input, got, err)
 		}
+	}
+}
+
+func runSetup(t *testing.T, serverURL string) (string, error) {
+	t.Helper()
+	var output bytes.Buffer
+	cmd := NewSetupCmd(&Root{Command: &cobra.Command{Use: "flotte"}})
+	cmd.SetOut(&output)
+	cmd.SetErr(&output)
+	cmd.SetContext(t.Context())
+	cmd.SetArgs([]string{serverURL, "--non-interactive"})
+	err := cmd.Execute()
+	return output.String(), err
+}
+
+func TestSetupRefusesAServerAddressOnAnotherHost(t *testing.T) {
+	keyring.MockInit()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	var elsewhere atomic.Int32
+	other := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		elsewhere.Add(1)
+	}))
+	defer other.Close()
+	var withSession atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-flotte-token") != "" {
+			withSession.Add(1)
+		}
+		if r.URL.Path == "/.well-known/cli-config" {
+			fmt.Fprintf(w, `{"baseUrl":%q,"authMethods":["consent"],"preferredAuthMethod":"consent"}`, other.URL)
+			return
+		}
+		fmt.Fprint(w, `{"authenticated":true,"email":"user@example.com"}`)
+	}))
+	defer server.Close()
+	cfg := config.ClientConfig{FlotteUrl: server.URL}
+	if err := cfg.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if err := auth.SaveToken(server.URL, "cached-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := runSetup(t, server.URL)
+
+	if err == nil || !strings.Contains(err.Error(), "flotte setup "+other.URL) || !strings.Contains(err.Error(), "did not switch") {
+		t.Fatalf("setup error = %v", err)
+	}
+	if elsewhere.Load() != 0 || withSession.Load() != 0 {
+		t.Fatalf("requests to the reported address = %d, requests carrying the session = %d", elsewhere.Load(), withSession.Load())
+	}
+	saved, err := config.LoadOrCreate()
+	if err != nil || saved.FlotteUrl != server.URL {
+		t.Fatalf("saved configuration = %+v, %v", saved, err)
+	}
+	if token, err := auth.LoadToken(server.URL); err != nil || token != "cached-token" {
+		t.Fatalf("cached session = %q, %v", token, err)
+	}
+}
+
+func TestSetupKeepsTheSessionOfTheSameServer(t *testing.T) {
+	keyring.MockInit()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("SHELL", "/bin/bash")
+	var server *httptest.Server
+	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/cli-config" {
+			fmt.Fprintf(w, `{"baseUrl":%q,"authMethods":["consent"],"preferredAuthMethod":"consent"}`, server.URL+"/")
+			return
+		}
+		fmt.Fprintf(w, `{"authenticated":%t,"email":"user@example.com"}`, r.Header.Get("X-flotte-token") == "cached-token")
+	}))
+	defer server.Close()
+	if err := auth.SaveToken(server.URL, "cached-token"); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := runSetup(t, server.URL)
+
+	if err != nil || !strings.Contains(output, "Setup complete") {
+		t.Fatalf("setup = %q, %v", output, err)
+	}
+	saved, err := config.LoadOrCreate()
+	if err != nil || saved.FlotteUrl != server.URL {
+		t.Fatalf("saved configuration = %+v, %v", saved, err)
 	}
 }

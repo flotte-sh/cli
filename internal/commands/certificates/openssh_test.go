@@ -52,9 +52,6 @@ func TestSSHHostkeysFailClosed(t *testing.T) {
 			t.Setenv("HOME", home)
 			t.Setenv("USERPROFILE", home)
 			keyring.MockInit()
-			if err := auth.SaveToken("cached-token"); err != nil {
-				t.Fatal(err)
-			}
 			private, err := openssh.LoadCLIPrivateKey()
 			if err != nil {
 				t.Fatal(err)
@@ -86,6 +83,9 @@ func TestSSHHostkeysFailClosed(t *testing.T) {
 				fmt.Fprint(writer, test.body)
 			}))
 			defer server.Close()
+			if err := auth.SaveToken(server.URL, "cached-token"); err != nil {
+				t.Fatal(err)
+			}
 			if test.outage {
 				server.Close()
 			}

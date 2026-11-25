@@ -24,6 +24,8 @@ const (
 	consentRequestTimeout    = 15 * time.Second
 	consentMaxFailedRequests = 5
 	maxSessionTokenLength    = 4096
+	maxLinkTicketLength      = 256
+	maxResponseBodySize      = 1 << 20
 )
 
 var (
@@ -38,10 +40,12 @@ var (
 // sign-in; the verifier never leaves this process, so nobody else who sees the
 // link can collect the session.
 type consentLogin struct {
-	authorizeURL string
-	tokenURL     string
-	state        string
-	verifier     string
+	authorizeEndpoint string
+	authorizeURL      string
+	startURL          string
+	tokenURL          string
+	state             string
+	verifier          string
 }
 
 func GetTokenFromConsentFlow(cfg *config.ClientConfig, ctx context.Context) (string, error) {
@@ -50,8 +54,11 @@ func GetTokenFromConsentFlow(cfg *config.ClientConfig, ctx context.Context) (str
 	waitCtx, stopWaiting := context.WithTimeout(ctx, consentLoginTimeout)
 	defer stopWaiting()
 
-	login, err := startConsentLogin(cfg.FlotteUrl)
+	login, err := newConsentLogin(cfg.FlotteUrl)
 	if err != nil {
+		return "", err
+	}
+	if err := login.requestLink(ctx); err != nil {
 		return "", err
 	}
 
@@ -64,8 +71,12 @@ func GetTokenFromConsentFlow(cfg *config.ClientConfig, ctx context.Context) (str
 	return login.waitForSession(waitCtx)
 }
 
-func startConsentLogin(serverURL string) (*consentLogin, error) {
+func newConsentLogin(serverURL string) (*consentLogin, error) {
 	authorizeEndpoint, err := config.JoinEndpoint(serverURL, "/auth/cli/authorize")
+	if err != nil {
+		return nil, fmt.Errorf("invalid server URL: %w", err)
+	}
+	startURL, err := config.JoinEndpoint(serverURL, "/auth/cli/start")
 	if err != nil {
 		return nil, fmt.Errorf("invalid server URL: %w", err)
 	}
@@ -81,21 +92,92 @@ func startConsentLogin(serverURL string) (*consentLogin, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to prepare sign-in: %w", err)
 	}
+	return &consentLogin{
+		authorizeEndpoint: authorizeEndpoint,
+		startURL:          startURL,
+		tokenURL:          tokenURL,
+		state:             state,
+		verifier:          verifier,
+	}, nil
+}
 
-	sum := sha256.Sum256([]byte(verifier))
-	challenge := base64.RawURLEncoding.EncodeToString(sum[:])
+func (l *consentLogin) linkParameters() url.Values {
+	sum := sha256.Sum256([]byte(l.verifier))
 	query := url.Values{}
 	query.Set("client_id", consentClientID)
-	query.Set("state", state)
-	query.Set("code_challenge", challenge)
+	query.Set("state", l.state)
+	query.Set("code_challenge", base64.RawURLEncoding.EncodeToString(sum[:]))
 	query.Set("code_challenge_method", "S256")
+	return query
+}
 
-	return &consentLogin{
-		authorizeURL: authorizeEndpoint + "?" + query.Encode(),
-		tokenURL:     tokenURL,
-		state:        state,
-		verifier:     verifier,
-	}, nil
+type consentStartResponse struct {
+	Ticket string `json:"ticket"`
+}
+
+func (l *consentLogin) requestLink(ctx context.Context) error {
+	parameters := l.linkParameters()
+	status, body, err := postConsentForm(ctx, l.startURL, parameters)
+	if err != nil {
+		return fmt.Errorf("failed to reach the server to start sign-in: %w", err)
+	}
+	switch status {
+	case http.StatusOK:
+	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusGone:
+		return errors.New("this Flotte server does not support the sign-in of this CLI - update the Flotte server")
+	case http.StatusTooManyRequests:
+		return errors.New("the server is handling too many sign-ins - wait a minute and run the command again")
+	default:
+		return fmt.Errorf("the server refused to start sign-in (HTTP %d)", status)
+	}
+	var started consentStartResponse
+	if err := json.Unmarshal(body, &started); err != nil || !isLinkTicket(started.Ticket) {
+		return errors.New("the server sent an invalid answer when starting sign-in")
+	}
+	parameters.Set("ticket", started.Ticket)
+	l.authorizeURL = l.authorizeEndpoint + "?" + parameters.Encode()
+	return nil
+}
+
+func isLinkTicket(ticket string) bool {
+	if ticket == "" || len(ticket) > maxLinkTicketLength {
+		return false
+	}
+	for _, c := range []byte(ticket) {
+		switch {
+		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '-', c == '_', c == '.':
+		default:
+			return false
+		}
+	}
+	return true
+}
+
+func postConsentForm(ctx context.Context, endpoint string, form url.Values) (int, []byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, consentRequestTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, strings.NewReader(form.Encode()))
+	if err != nil {
+		return 0, nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{
+		Timeout: consentRequestTimeout,
+		// The request names the sign-in and may carry the verifier; never resend it elsewhere.
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	resp, err := client.Do(req) //#nosec G107,G704 -- the URL is the configured Flotte server
+	if err != nil {
+		return 0, nil, err
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
+	if err != nil {
+		return 0, nil, err
+	}
+	return resp.StatusCode, body, nil
 }
 
 func randomURLToken() (string, error) {
@@ -167,34 +249,15 @@ func (l *consentLogin) collect(ctx context.Context) (string, error) {
 	form.Set("state", l.state)
 	form.Set("code_verifier", l.verifier)
 
-	ctx, cancel := context.WithTimeout(ctx, consentRequestTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, l.tokenURL, strings.NewReader(form.Encode()))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{
-		Timeout: consentRequestTimeout,
-		// The request carries the verifier; never resend it elsewhere.
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	resp, err := client.Do(req) //#nosec G107,G704 -- the URL is the configured Flotte server
-	if err != nil {
-		return "", &consentUnreachableError{cause: err}
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBodySize))
+	status, body, err := postConsentForm(ctx, l.tokenURL, form)
 	if err != nil {
 		return "", &consentUnreachableError{cause: err}
 	}
 
-	if resp.StatusCode == http.StatusTooManyRequests {
+	if status == http.StatusTooManyRequests {
 		return "", errSlowDown
 	}
-	if resp.StatusCode != http.StatusOK {
+	if status != http.StatusOK {
 		var tokenErr consentTokenError
 		_ = json.Unmarshal(body, &tokenErr)
 		switch tokenErr.Error {
@@ -209,7 +272,7 @@ func (l *consentLogin) collect(ctx context.Context) (string, error) {
 		case "unsupported_grant_type":
 			return "", errors.New("this Flotte server does not support the sign-in of this CLI - update the Flotte server")
 		}
-		return "", fmt.Errorf("the server refused to complete sign-in (HTTP %d)", resp.StatusCode)
+		return "", fmt.Errorf("the server refused to complete sign-in (HTTP %d)", status)
 	}
 	var token consentTokenResponse
 	if err := json.Unmarshal(body, &token); err != nil {
