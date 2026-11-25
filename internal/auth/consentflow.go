@@ -3,9 +3,7 @@ package auth
 import (
 	"context"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -101,58 +99,6 @@ func newConsentLogin(serverURL string) (*consentLogin, error) {
 	}, nil
 }
 
-func (l *consentLogin) linkParameters() url.Values {
-	sum := sha256.Sum256([]byte(l.verifier))
-	query := url.Values{}
-	query.Set("client_id", consentClientID)
-	query.Set("state", l.state)
-	query.Set("code_challenge", base64.RawURLEncoding.EncodeToString(sum[:]))
-	query.Set("code_challenge_method", "S256")
-	return query
-}
-
-type consentStartResponse struct {
-	Ticket string `json:"ticket"`
-}
-
-func (l *consentLogin) requestLink(ctx context.Context) error {
-	parameters := l.linkParameters()
-	status, body, err := postConsentForm(ctx, l.startURL, parameters)
-	if err != nil {
-		return fmt.Errorf("failed to reach the server to start sign-in: %w", err)
-	}
-	switch status {
-	case http.StatusOK:
-	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusGone:
-		return errors.New("this Flotte server does not support the sign-in of this CLI - update the Flotte server")
-	case http.StatusTooManyRequests:
-		return errors.New("the server is handling too many sign-ins - wait a minute and run the command again")
-	default:
-		return fmt.Errorf("the server refused to start sign-in (HTTP %d)", status)
-	}
-	var started consentStartResponse
-	if err := json.Unmarshal(body, &started); err != nil || !isLinkTicket(started.Ticket) {
-		return errors.New("the server sent an invalid answer when starting sign-in")
-	}
-	parameters.Set("ticket", started.Ticket)
-	l.authorizeURL = l.authorizeEndpoint + "?" + parameters.Encode()
-	return nil
-}
-
-func isLinkTicket(ticket string) bool {
-	if ticket == "" || len(ticket) > maxLinkTicketLength {
-		return false
-	}
-	for _, c := range []byte(ticket) {
-		switch {
-		case c >= 'A' && c <= 'Z', c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '-', c == '_', c == '.':
-		default:
-			return false
-		}
-	}
-	return true
-}
-
 func postConsentForm(ctx context.Context, endpoint string, form url.Values) (int, []byte, error) {
 	ctx, cancel := context.WithTimeout(ctx, consentRequestTimeout)
 	defer cancel()
@@ -221,79 +167,6 @@ func (l *consentLogin) waitForSession(ctx context.Context) (string, error) {
 			return "", ctx.Err()
 		}
 	}
-}
-
-var errSlowDown = errors.New("the server asked to wait longer between requests")
-
-type consentUnreachableError struct{ cause error }
-
-func (e *consentUnreachableError) Error() string {
-	return fmt.Sprintf("failed to reach the server to complete sign-in: %v", e.cause)
-}
-
-func (e *consentUnreachableError) Unwrap() error { return e.cause }
-
-type consentTokenResponse struct {
-	AccessToken string `json:"access_token"`
-	TokenType   string `json:"token_type"`
-}
-
-type consentTokenError struct {
-	Error string `json:"error"`
-}
-
-func (l *consentLogin) collect(ctx context.Context) (string, error) {
-	form := url.Values{}
-	form.Set("grant_type", consentGrantType)
-	form.Set("client_id", consentClientID)
-	form.Set("state", l.state)
-	form.Set("code_verifier", l.verifier)
-
-	status, body, err := postConsentForm(ctx, l.tokenURL, form)
-	if err != nil {
-		return "", &consentUnreachableError{cause: err}
-	}
-
-	if status == http.StatusTooManyRequests {
-		return "", errSlowDown
-	}
-	if status != http.StatusOK {
-		var tokenErr consentTokenError
-		_ = json.Unmarshal(body, &tokenErr)
-		switch tokenErr.Error {
-		case "authorization_pending":
-			return "", errSignInPending
-		case "access_denied":
-			return "", errSignInCancelled
-		case "server_error":
-			return "", errors.New("the sign-in failed on the server - run the command again")
-		case "invalid_grant":
-			return "", errors.New("the server rejected this sign-in - run the command again")
-		case "unsupported_grant_type":
-			return "", errors.New("this Flotte server does not support the sign-in of this CLI - update the Flotte server")
-		}
-		return "", fmt.Errorf("the server refused to complete sign-in (HTTP %d)", status)
-	}
-	var token consentTokenResponse
-	if err := json.Unmarshal(body, &token); err != nil {
-		return "", errors.New("the server sent an invalid sign-in response")
-	}
-	if !isSessionToken(token.AccessToken) || !strings.EqualFold(token.TokenType, "Bearer") {
-		return "", errors.New("the server sent an invalid sign-in response")
-	}
-	return token.AccessToken, nil
-}
-
-func isSessionToken(token string) bool {
-	if token == "" || len(token) > maxSessionTokenLength {
-		return false
-	}
-	for _, c := range []byte(token) {
-		if c <= ' ' || c >= 0x7f {
-			return false
-		}
-	}
-	return true
 }
 
 func printConsentInstructions(ctx context.Context, login *consentLogin, launchErr error) {
