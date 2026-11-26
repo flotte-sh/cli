@@ -210,7 +210,7 @@ func TestSetupRefusesAServerAddressOnAnotherHost(t *testing.T) {
 			withSession.Add(1)
 		}
 		if r.URL.Path == "/.well-known/cli-config" {
-			fmt.Fprintf(w, `{"baseUrl":%q,"authMethods":["consent"],"preferredAuthMethod":"consent"}`, other.URL)
+			fmt.Fprintf(w, `{"baseUrl":%q,"authMethods":["consent"]}`, other.URL)
 			return
 		}
 		fmt.Fprint(w, `{"authenticated":true,"email":"user@example.com"}`)
@@ -250,7 +250,7 @@ func TestSetupKeepsTheSessionOfTheSameServer(t *testing.T) {
 	var server *httptest.Server
 	server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/cli-config" {
-			fmt.Fprintf(w, `{"baseUrl":%q,"authMethods":["consent"],"preferredAuthMethod":"consent"}`, server.URL+"/")
+			fmt.Fprintf(w, `{"baseUrl":%q,"authMethods":["consent"]}`, server.URL+"/")
 			return
 		}
 		fmt.Fprintf(w, `{"authenticated":%t,"email":"user@example.com"}`, r.Header.Get("X-flotte-token") == "cached-token")

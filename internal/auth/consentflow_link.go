@@ -19,8 +19,6 @@ func (l *consentLogin) requestLink(ctx context.Context) error {
 	}
 	switch status {
 	case http.StatusOK:
-	case http.StatusNotFound, http.StatusMethodNotAllowed, http.StatusGone:
-		return errors.New("this Flotte server does not support the sign-in of this CLI - update the Flotte server")
 	case http.StatusTooManyRequests:
 		return errors.New("the server is handling too many sign-ins - wait a minute and run the command again")
 	default:

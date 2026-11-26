@@ -37,8 +37,6 @@ func (l *consentLogin) collect(ctx context.Context) (string, error) {
 			return "", errors.New("the sign-in failed on the server - run the command again")
 		case "invalid_grant":
 			return "", errors.New("the server rejected this sign-in - run the command again")
-		case "unsupported_grant_type":
-			return "", errors.New("this Flotte server does not support the sign-in of this CLI - update the Flotte server")
 		}
 		return "", fmt.Errorf("the server refused to complete sign-in (HTTP %d)", status)
 	}

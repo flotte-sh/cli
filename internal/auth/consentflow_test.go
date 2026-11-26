@@ -89,8 +89,7 @@ func TestConsentLoginOpensNoLinkWithoutATicketFromTheServer(t *testing.T) {
 		message string
 		status  int
 	}{
-		{name: "older server", status: http.StatusNotFound, body: `not found`, message: "update the Flotte server"},
-		{name: "removed sign-in", status: http.StatusGone, body: `{"error":"gone"}`, message: "update the Flotte server"},
+		{name: "no such route", status: http.StatusNotFound, body: `not found`, message: "HTTP 404"},
 		{name: "throttled", status: http.StatusTooManyRequests, body: ``, message: "too many sign-ins"},
 		{name: "server error", status: http.StatusInternalServerError, body: `oops`, message: "HTTP 500"},
 		{name: "not json", status: http.StatusOK, body: `<html>`, message: "invalid answer"},
@@ -200,7 +199,7 @@ func TestConsentLoginRefusals(t *testing.T) {
 		{name: "cancelled in the browser", status: 400, body: `{"error":"access_denied"}`, message: "cancelled", cancelled: true},
 		{name: "failed on the server", status: 400, body: `{"error":"server_error"}`, message: "failed on the server"},
 		{name: "rejected", status: 400, body: `{"error":"invalid_grant"}`, message: "rejected this sign-in"},
-		{name: "older server", status: 400, body: `{"error":"unsupported_grant_type"}`, message: "update the Flotte server"},
+		{name: "unknown grant", status: 400, body: `{"error":"unsupported_grant_type"}`, message: "HTTP 400"},
 		{name: "unknown error", status: 500, body: `oops`, message: "HTTP 500"},
 		{name: "not json", status: 200, body: `<html>`, message: "invalid sign-in response"},
 		{name: "empty token", status: 200, body: `{"access_token":"","token_type":"Bearer"}`, message: "invalid sign-in response"},

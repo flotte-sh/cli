@@ -93,7 +93,7 @@ func TestInitAuthReauthenticatesStaleSession(t *testing.T) {
 	stubConsentToken(t, "fresh-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/cli-config" {
-			fmt.Fprint(w, `{"authMode":"consent"}`)
+			fmt.Fprint(w, `{"authMethods":["consent"]}`)
 			return
 		}
 		fmt.Fprintf(w, `{"authenticated":%t}`, r.Header.Get("X-flotte-token") == "fresh-token")
@@ -124,7 +124,7 @@ func TestInitAuthRecoversFromUnauthorizedCachedSession(t *testing.T) {
 			stubConsentToken(t, "fresh-token")
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.URL.Path == "/.well-known/cli-config" {
-					fmt.Fprint(w, `{"authMode":"consent"}`)
+					fmt.Fprint(w, `{"authMethods":["consent"]}`)
 					return
 				}
 				if r.Header.Get("X-flotte-token") == "stale-token" {
@@ -164,7 +164,7 @@ func TestInitAuthCachesFreshSessionWhenValidationFails(t *testing.T) {
 	stubConsentToken(t, "fresh-token")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/.well-known/cli-config" {
-			fmt.Fprint(w, `{"authMode":"consent"}`)
+			fmt.Fprint(w, `{"authMethods":["consent"]}`)
 			return
 		}
 		http.Error(w, "unavailable", http.StatusServiceUnavailable)
@@ -237,7 +237,7 @@ func TestInitAuthNeverSendsACachedSessionToAnotherServer(t *testing.T) {
 					leaked.Add(1)
 				}
 				if r.URL.Path == "/.well-known/cli-config" {
-					fmt.Fprint(w, `{"authMode":"consent"}`)
+					fmt.Fprint(w, `{"authMethods":["consent"]}`)
 					return
 				}
 				fmt.Fprintf(w, `{"authenticated":%t}`, r.Header.Get("X-flotte-token") == "fresh-token")

@@ -157,11 +157,11 @@ func TestLogoutNeverSendsASessionSavedWithoutItsServer(t *testing.T) {
 	if err := cfg.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if err := keyring.Set("flotte-cli", "opaque-token", "token-from-an-older-cli"); err != nil {
+	if err := keyring.Set("flotte-cli", "opaque-token", "token-without-a-server"); err != nil {
 		t.Fatal(err)
 	}
 
-	if _, warnings := executeLogout(t); !strings.Contains(warnings, logoutNotEndedWarning) {
+	if _, warnings := executeLogout(t); warnings != "" {
 		t.Fatalf("warning = %q", warnings)
 	}
 

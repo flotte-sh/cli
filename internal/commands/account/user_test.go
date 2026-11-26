@@ -80,7 +80,7 @@ func TestLoginReauthenticatesStaleCachedSession(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/.well-known/cli-config":
-			fmt.Fprint(w, `{"authMode":"consent"}`)
+			fmt.Fprint(w, `{"authMethods":["consent"]}`)
 		case "/auth/me":
 			if r.Header.Get("X-flotte-token") == "fresh-token" {
 				fmt.Fprint(w, `{"authenticated":true,"email":"fresh@example.com"}`)

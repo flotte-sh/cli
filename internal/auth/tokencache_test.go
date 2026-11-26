@@ -421,10 +421,10 @@ func TestLoadToken_NeverReturnsATokenSavedWithoutItsServer(t *testing.T) {
 	t.Run("keyring", func(t *testing.T) {
 		keyring.MockInit()
 		t.Setenv("HOME", t.TempDir())
-		if err := keyring.Set(keyringService, keyringUser, "token-of-an-older-cli"); err != nil {
+		if err := keyring.Set(keyringService, keyringUser, "token-without-a-server"); err != nil {
 			t.Fatalf("keyring.Set: %v", err)
 		}
-		requireUnusableButRemovable(t, "token-of-an-older-cli")
+		requireUnusableButRemovable(t)
 	})
 	t.Run("file", func(t *testing.T) {
 		keyring.MockInitWithError(errNoKeyring)
@@ -433,27 +433,30 @@ func TestLoadToken_NeverReturnsATokenSavedWithoutItsServer(t *testing.T) {
 		if err := os.MkdirAll(cfgDir, 0o700); err != nil {
 			t.Fatalf("MkdirAll: %v", err)
 		}
-		if err := os.WriteFile(filepath.Join(cfgDir, tokenCacheFile), []byte(`{"token":"token-of-an-older-cli"}`), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(cfgDir, tokenCacheFile), []byte(`{"token":"token-without-a-server"}`), 0o600); err != nil {
 			t.Fatalf("WriteFile: %v", err)
 		}
-		requireUnusableButRemovable(t, "token-of-an-older-cli")
+		requireUnusableButRemovable(t)
 	})
 }
 
-func requireUnusableButRemovable(t *testing.T, token string) {
+func requireUnusableButRemovable(t *testing.T) {
 	t.Helper()
 	if got, err := LoadToken(testServer); err == nil {
 		t.Fatalf("LoadToken returned %q, which was saved without its server", got)
 	}
-	session, err := LoadSession()
-	if err != nil || session.Token != token || session.Server != "" {
-		t.Fatalf("LoadSession = %+v, %v", session, err)
+	if session, err := LoadSession(); err == nil {
+		t.Fatalf("LoadSession returned %+v, which was saved without its server", session)
 	}
 	if err := DeleteToken(); err != nil {
 		t.Fatalf("DeleteToken: %v", err)
 	}
-	if session, err := LoadSession(); err == nil {
-		t.Fatalf("session remains after deletion: %+v", session)
+	if secret, err := keyring.Get(keyringService, keyringUser); err == nil {
+		t.Fatalf("keyring entry remains after deletion: %q", secret)
+	}
+	cfgDir, _ := config.GetConfigDir()
+	if _, err := os.Stat(filepath.Join(cfgDir, tokenCacheFile)); !os.IsNotExist(err) {
+		t.Fatalf("token file remains after deletion: %v", err)
 	}
 }
 

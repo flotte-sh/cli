@@ -3,7 +3,6 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -14,38 +13,15 @@ import (
 )
 
 type Discovery struct {
-	BaseURL             string   `json:"baseUrl"`
-	AuthMethods         []string `json:"authMethods"`
-	PreferredAuthMethod string   `json:"preferredAuthMethod"`
-	AuthMode            string   `json:"authMode"`
+	BaseURL     string   `json:"baseUrl"`
+	AuthMethods []string `json:"authMethods"`
 }
 
-const (
-	authMethodConsent       = "consent"
-	authMethodLegacyDevice  = "device"
-	authMethodLegacyBrowser = "browser"
-)
-
-var errLegacyServer = errors.New("this Flotte server only offers a sign-in that this CLI no longer supports for security reasons - update the Flotte server")
+const authMethodConsent = "consent"
 
 func (d Discovery) Method() (string, error) {
-	methods := d.AuthMethods
-	preferred := d.PreferredAuthMethod
-	if methods == nil && preferred == "" {
-		methods = []string{d.AuthMode}
-		preferred = d.AuthMode
-	}
-	if len(methods) == 0 {
-		return "", fmt.Errorf("server advertises no authentication methods")
-	}
-	if preferred != "" && !slices.Contains(methods, preferred) {
-		return "", fmt.Errorf("preferred authentication method %q is not advertised", preferred)
-	}
-	if slices.Contains(methods, authMethodConsent) {
+	if slices.Contains(d.AuthMethods, authMethodConsent) {
 		return authMethodConsent, nil
-	}
-	if slices.Contains(methods, authMethodLegacyBrowser) || slices.Contains(methods, authMethodLegacyDevice) {
-		return "", errLegacyServer
 	}
 	return "", fmt.Errorf("server advertises no supported authentication methods")
 }

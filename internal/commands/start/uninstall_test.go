@@ -241,18 +241,18 @@ func TestUninstallRemovesSessionDataItCannotRevoke(t *testing.T) {
 		plant       func(t *testing.T, home string)
 		wantWarning bool
 	}{
-		{name: "keyring session saved by an older CLI", wantWarning: true, plant: func(t *testing.T, _ string) {
+		{name: "keyring entry that is not a session", plant: func(t *testing.T, _ string) {
 			if err := keyring.Set("flotte-cli", "opaque-token", "cached-token"); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{name: "file session saved by an older CLI", wantWarning: true, plant: func(t *testing.T, home string) {
+		{name: "file session without a server", plant: func(t *testing.T, home string) {
 			writeTokenFile(t, home, `{"token":"cached-token"}`)
 		}},
 		{name: "corrupt token file", plant: func(t *testing.T, home string) {
 			writeTokenFile(t, home, `{not json`)
 		}},
-		{name: "session in both stores", wantWarning: true, plant: func(t *testing.T, home string) {
+		{name: "unusable session in both stores", plant: func(t *testing.T, home string) {
 			if err := keyring.Set("flotte-cli", "opaque-token", "cached-token"); err != nil {
 				t.Fatal(err)
 			}

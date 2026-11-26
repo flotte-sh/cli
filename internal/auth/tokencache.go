@@ -19,10 +19,17 @@ const (
 
 type Session struct {
 	Token  string `json:"token"`
-	Server string `json:"server,omitempty"`
+	Server string `json:"server"`
 }
 
-var errOtherServer = errors.New("the cached session does not belong to this Flotte server")
+var (
+	errOtherServer       = errors.New("the cached session does not belong to this Flotte server")
+	errIncompleteSession = errors.New("the cached session has no token or no server")
+)
+
+func (s Session) complete() bool {
+	return s.Token != "" && s.Server != ""
+}
 
 func LoadSession() (Session, error) {
 	if session, err := loadFromKeyring(); err == nil {
@@ -90,13 +97,12 @@ func loadFromKeyring() (Session, error) {
 	if err != nil {
 		return Session{}, err
 	}
-	if secret == "" {
-		return Session{}, fmt.Errorf("empty token in keyring")
-	}
 	var session Session
-	if err := json.Unmarshal([]byte(secret), &session); err != nil || session.Token == "" {
-		// Older CLIs stored the bare token. Without its server it is never sent anywhere.
-		return Session{Token: secret}, nil
+	if err := json.Unmarshal([]byte(secret), &session); err != nil {
+		return Session{}, err
+	}
+	if !session.complete() {
+		return Session{}, errIncompleteSession
 	}
 	return session, nil
 }
@@ -132,8 +138,8 @@ func loadFromFile() (Session, error) {
 	if err := json.NewDecoder(f).Decode(&session); err != nil {
 		return Session{}, err
 	}
-	if session.Token == "" {
-		return Session{}, fmt.Errorf("empty token cache")
+	if !session.complete() {
+		return Session{}, errIncompleteSession
 	}
 	return session, nil
 }

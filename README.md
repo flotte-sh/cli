@@ -91,11 +91,10 @@ authentication flow, credential lifetime, and troubleshooting.
 - Choose Cancel on the page to reject a sign-in; the CLI stops waiting.
 - A sign-in link works for 5 minutes. After that the server refuses it; run the command again.
 - Open the link yourself. A link that another web page opens, for example from web mail or a browser-based terminal, is refused: paste it into the address bar.
-- This CLI needs a Flotte server that offers the `consent` sign-in. Older servers must be updated.
 
 The CLI keeps one session and sends it only to the server that issued it:
 
-- After pointing the CLI at another server, sign in again. A session saved by an older CLI is not tied to a server and is no longer used.
+- After pointing the CLI at another server, sign in again.
 - `flotte setup` uses the address a server reports for itself only when it is on the host you entered. Otherwise it stops and prints the command to run.
 - Requests that carry the session never follow a redirect. If the server address redirects, run `flotte setup` with the address it redirects to.
 - `flotte logout` ends the session on the server that issued it and removes it from this computer. If the server cannot be reached, the session is still removed locally and the CLI warns that it can stay valid on the server until it expires.
