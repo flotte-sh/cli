@@ -22,7 +22,7 @@ func TestBrowserPresentation(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			var out bytes.Buffer
 			ctx := WithPresentation(context.Background(), &out, test.show)
-			printBrowserInstructions(ctx, "https://example.test/login", test.launchErr)
+			printConsentInstructions(ctx, &consentLogin{authorizeURL: "https://example.test/login"}, test.launchErr)
 			if strings.Contains(out.String(), "https://example.test/login") != test.wantURL {
 				t.Fatalf("unexpected URL visibility: %q", out.String())
 			}
@@ -45,7 +45,7 @@ func TestBrowserPresentation(t *testing.T) {
 func TestDefaultBrowserPresentation(t *testing.T) {
 	var out bytes.Buffer
 	ctx := context.WithValue(context.Background(), presentationWriterKey{}, &out)
-	printBrowserInstructions(ctx, "https://example.test/login", nil)
+	printConsentInstructions(ctx, &consentLogin{authorizeURL: "https://example.test/login"}, nil)
 	if !strings.Contains(out.String(), "Visit: https://example.test/login") {
 		t.Fatalf("default login output changed: %q", out.String())
 	}

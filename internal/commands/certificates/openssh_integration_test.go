@@ -175,7 +175,7 @@ func TestNativeOpenSSHIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 	keyring.MockInitWithError(errors.New("integration uses isolated file storage"))
-	if err := auth.SaveToken("integration-only"); err != nil {
+	if err := auth.SaveToken(api.URL, "integration-only"); err != nil {
 		t.Fatal(err)
 	}
 	binary := filepath.Join(t.TempDir(), "flotte app's")

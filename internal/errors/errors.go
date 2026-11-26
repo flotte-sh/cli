@@ -107,6 +107,8 @@ func ParseApiError(resp *http.Response) error {
 // statusCodeToMessage returns a user-friendly message for common HTTP status codes.
 func statusCodeToMessage(code int) string {
 	switch code {
+	case http.StatusMovedPermanently, http.StatusFound, http.StatusSeeOther, http.StatusTemporaryRedirect, http.StatusPermanentRedirect:
+		return "the server redirected the request to another address, which the CLI does not follow so that your session is not sent elsewhere - rerun 'flotte setup <server-url>' with the address from your administrator"
 	case http.StatusBadRequest:
 		return "request was rejected by the server - check the command arguments and try again"
 	case http.StatusUnauthorized:

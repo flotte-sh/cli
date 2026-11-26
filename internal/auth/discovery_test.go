@@ -15,15 +15,10 @@ import (
 
 func TestDiscoverySelection(t *testing.T) {
 	for _, tt := range []struct{ body, want string }{
-		{`{"authMode":"browser"}`, "browser"},
-		{`{"authMode":"device"}`, "device"},
-		{`{"authMethods":["browser","device"],"preferredAuthMethod":"device","authMode":"browser"}`, "device"},
-		{`{"authMethods":["future","browser"],"preferredAuthMethod":"future"}`, "browser"},
-		{`{"authMethods":["device"]}`, "device"},
-		{`{"authMethods":["future"],"authMode":"browser"}`, ""},
-		{`{"authMethods":[],"authMode":"browser"}`, ""},
-		{`{"authMethods":["browser"],"preferredAuthMethod":"device"}`, ""},
-		{`{"authMode":"unknown"}`, ""},
+		{`{"authMethods":["consent"]}`, "consent"},
+		{`{"authMethods":["future","consent"]}`, "consent"},
+		{`{"authMethods":["future"]}`, ""},
+		{`{"authMethods":[]}`, ""},
 		{`{}`, ""},
 	} {
 		t.Run(tt.body, func(t *testing.T) {
@@ -40,7 +35,7 @@ func TestDiscoverySelection(t *testing.T) {
 }
 
 func TestDiscoveryErrorsDoNotStartAuthentication(t *testing.T) {
-	for _, body := range []string{`{`, `null`, `{}`, `{"authMethods":"browser"}`, `{"authMode":"browser"} {}`, `{"authMode":"browser","baseUrl":"https://:443"}`, "http-error"} {
+	for _, body := range []string{`{`, `null`, `{}`, `{"authMethods":"consent"}`, `{"authMethods":["consent"]} {}`, `{"authMethods":["consent"],"baseUrl":"https://:443"}`, "http-error"} {
 		t.Run(body, func(t *testing.T) {
 			keyring.MockInit()
 			t.Setenv("HOME", t.TempDir())
@@ -62,29 +57,21 @@ func TestDiscoveryErrorsDoNotStartAuthentication(t *testing.T) {
 }
 
 func TestAuthenticationDoesNotFallback(t *testing.T) {
-	for _, method := range []string{"browser", "device"} {
-		t.Run(method, func(t *testing.T) {
-			keyring.MockInit()
-			t.Setenv("HOME", t.TempDir())
-			oldBrowser, oldDevice := browserToken, deviceToken
-			t.Cleanup(func() { browserToken, deviceToken = oldBrowser, oldDevice })
-			calls := []string{}
-			browserToken = func(*config.ClientConfig, context.Context) (string, error) {
-				calls = append(calls, "browser")
-				return "", errors.New("network failure")
-			}
-			deviceToken = func(*config.ClientConfig, context.Context) (string, error) {
-				calls = append(calls, "device")
-				return "", errors.New("denied")
-			}
-			ctx := WithDiscovery(t.Context(), "https://example.com", Discovery{AuthMethods: []string{"browser", "device"}, PreferredAuthMethod: method})
-			if _, err := InitAuth(testAuthConfig("https://example.com"), ctx, true); err == nil {
-				t.Fatal("expected auth error")
-			}
-			if len(calls) != 1 || calls[0] != method {
-				t.Fatalf("calls = %v", calls)
-			}
-		})
+	keyring.MockInit()
+	t.Setenv("HOME", t.TempDir())
+	oldConsent := consentToken
+	t.Cleanup(func() { consentToken = oldConsent })
+	calls := 0
+	consentToken = func(*config.ClientConfig, context.Context) (string, error) {
+		calls++
+		return "", errors.New("network failure")
+	}
+	ctx := WithDiscovery(t.Context(), "https://example.com", Discovery{AuthMethods: []string{"consent", "future"}})
+	if _, err := InitAuth(testAuthConfig("https://example.com"), ctx, true); err == nil {
+		t.Fatal("expected auth error")
+	}
+	if calls != 1 {
+		t.Fatalf("consent sign-in calls = %d, want 1", calls)
 	}
 }
 
@@ -102,17 +89,17 @@ func TestDiscoveryReuseIsBoundToServer(t *testing.T) {
 	requests := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		requests++
-		fmt.Fprint(w, `{"authMode":"device"}`)
+		fmt.Fprint(w, `{"authMethods":["consent"]}`)
 	}))
 	defer server.Close()
-	ctx := WithDiscovery(t.Context(), server.URL, Discovery{AuthMode: "browser"})
+	ctx := WithDiscovery(t.Context(), server.URL, Discovery{AuthMethods: []string{"consent"}})
 	method, err := discoverMethod(ctx, server.URL)
-	if err != nil || method != "browser" || requests != 0 {
+	if err != nil || method != "consent" || requests != 0 {
 		t.Fatalf("reused discovery = %q, %v; requests = %d", method, err, requests)
 	}
-	ctx = WithDiscovery(t.Context(), "https://other.example", Discovery{AuthMode: "browser"})
+	ctx = WithDiscovery(t.Context(), "https://other.example", Discovery{AuthMethods: []string{"consent"}})
 	method, err = discoverMethod(ctx, server.URL)
-	if err != nil || method != "device" || requests != 1 {
+	if err != nil || method != "consent" || requests != 1 {
 		t.Fatalf("fresh discovery = %q, %v; requests = %d", method, err, requests)
 	}
 }

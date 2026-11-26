@@ -31,6 +31,15 @@ type UserInfoResponse struct {
 	Roles         []string `json:"roles,omitempty"`
 }
 
+func newClient(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+}
+
 func RequestCertificate(ctx context.Context, cfg *config.ClientConfig, token string, userPublicKey, serverHostkey, serverUserName string) (*SshCertResponse, error) {
 	const operation = "client.RequestCertificate"
 
@@ -38,7 +47,7 @@ func RequestCertificate(ctx context.Context, cfg *config.ClientConfig, token str
 		return nil, clierrors.New(operation, nil, "no authentication token - please run 'flotte login'")
 	}
 
-	cli := &http.Client{Timeout: 60 * time.Second}
+	cli := newClient(60 * time.Second)
 
 	requestBody := &SshCertRequest{
 		ServerHostkey:   serverHostkey,
@@ -97,17 +106,21 @@ func RevokeToken(cfg *config.ClientConfig, token string) error {
 	}
 	req.Header.Set("X-flotte-token", token)
 
-	cli := &http.Client{Timeout: 10 * time.Second}
+	cli := newClient(10 * time.Second)
 	resp, err := cli.Do(req) //#nosec G107 -- FlotteUrl is user-configured CLI setting, not attacker-controlled input
 	if err != nil {
 		return clierrors.Wrap(operation, err, "failed to connect to server")
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+	if !sessionIsGone(resp.StatusCode) {
 		return clierrors.ParseApiError(resp)
 	}
 	return nil
+}
+
+func sessionIsGone(logoutStatus int) bool {
+	return logoutStatus == http.StatusNoContent || logoutStatus == http.StatusOK || logoutStatus == http.StatusUnauthorized
 }
 
 func FetchUserInfo(ctx context.Context, cfg *config.ClientConfig, token string) (*UserInfoResponse, error) {
@@ -125,7 +138,7 @@ func FetchUserInfo(ctx context.Context, cfg *config.ClientConfig, token string) 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("X-flotte-token", token)
 
-	cli := &http.Client{Timeout: 10 * time.Second}
+	cli := newClient(10 * time.Second)
 	resp, err := cli.Do(req)
 	if err != nil {
 		return nil, clierrors.Wrap(operation, err, "failed to connect to server - check your network connection")

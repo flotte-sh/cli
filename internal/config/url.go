@@ -12,7 +12,11 @@ func NormalizeFlotteURL(raw string) (string, error) {
 	if trimmed == "" {
 		return "", fmt.Errorf("server URL is required")
 	}
-	if !strings.HasPrefix(trimmed, "http://") && !strings.HasPrefix(trimmed, "https://") {
+	if scheme, rest, found := strings.Cut(trimmed, "://"); found && (strings.EqualFold(scheme, "http") || strings.EqualFold(scheme, "https")) {
+		trimmed = strings.ToLower(scheme) + "://" + rest
+	} else if found {
+		return "", fmt.Errorf("unsupported scheme %q", scheme)
+	} else {
 		trimmed = "https://" + trimmed
 	}
 
@@ -66,4 +70,29 @@ func JoinEndpoint(baseURL string, endpointPath string) (string, error) {
 	}
 	parsed.RawPath = ""
 	return parsed.String(), nil
+}
+
+func ReportedServerURL(enteredURL, reportedURL string) (string, error) {
+	reported, err := NormalizeFlotteURL(reportedURL)
+	if err != nil {
+		return "", err
+	}
+	entered, err := NormalizeFlotteURL(enteredURL)
+	if err != nil {
+		return "", err
+	}
+	enteredParts, err := url.Parse(entered)
+	if err != nil {
+		return "", err
+	}
+	reportedParts, err := url.Parse(reported)
+	if err != nil {
+		return "", err
+	}
+	sameHost := strings.EqualFold(enteredParts.Host, reportedParts.Host)
+	sameOrSaferScheme := reportedParts.Scheme == enteredParts.Scheme || reportedParts.Scheme == "https"
+	if !sameHost || !sameOrSaferScheme {
+		return "", &OtherServerError{Entered: entered, Reported: reported}
+	}
+	return reported, nil
 }

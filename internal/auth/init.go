@@ -2,7 +2,6 @@ package auth
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"os"
 
@@ -36,15 +35,12 @@ func showLoginURL(ctx context.Context) bool {
 	return !ok || show
 }
 
-var (
-	browserToken = GetTokenFromBrowserFlow
-	deviceToken  = GetTokenFromDeviceFlow
-)
+var consentToken = GetTokenFromConsentFlow
 
 func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bool) (string, error) {
 	const operation = "initAuth"
 
-	if token, err := LoadToken(); err == nil {
+	if token, err := LoadToken(cfg.FlotteUrl); err == nil {
 		userInfo, err := client.FetchUserInfo(ctx, cfg, token)
 		if err != nil {
 			return "", clierrors.Wrap(operation, err, "failed to validate cached session")
@@ -66,26 +62,15 @@ func InitAuth(cfg *config.ClientConfig, ctx context.Context, allowInteractive bo
 		return "", clierrors.Wrap(operation, discoveryErr, "failed to discover server authentication methods")
 	}
 
-	var (
-		token  string
-		err    error
-		method string
-	)
-	switch authMode {
-	case authMethodBrowser:
-		method = authMethodBrowser
-		token, err = browserToken(cfg, ctx)
-	case authMethodDevice:
-		method = "device flow"
-		token, err = deviceToken(cfg, ctx)
-	default:
+	if authMode != authMethodConsent {
 		return "", clierrors.Newf(operation, nil, "unsupported server authentication method %q", authMode)
 	}
+	token, err := consentToken(cfg, ctx)
 	if err != nil {
-		return "", clierrors.Wrap(operation, err, fmt.Sprintf("%s authentication failed. Retry with 'flotte login'.", method))
+		return "", clierrors.Wrap(operation, err, "browser authentication failed. Retry with 'flotte login'.")
 	}
 
-	if err := SaveToken(token); err != nil {
+	if err := SaveToken(cfg.FlotteUrl, token); err != nil {
 		return "", clierrors.Wrap(operation, err, "authentication succeeded but the CLI could not save the token - run 'flotte login' again")
 	}
 

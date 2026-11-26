@@ -13,37 +13,15 @@ import (
 )
 
 type Discovery struct {
-	BaseURL             string   `json:"baseUrl"`
-	AuthMethods         []string `json:"authMethods"`
-	PreferredAuthMethod string   `json:"preferredAuthMethod"`
-	AuthMode            string   `json:"authMode"`
+	BaseURL     string   `json:"baseUrl"`
+	AuthMethods []string `json:"authMethods"`
 }
 
-const (
-	authMethodBrowser = "browser"
-	authMethodDevice  = "device"
-)
+const authMethodConsent = "consent"
 
 func (d Discovery) Method() (string, error) {
-	methods := d.AuthMethods
-	preferred := d.PreferredAuthMethod
-	if methods == nil && preferred == "" {
-		methods = []string{d.AuthMode}
-		preferred = d.AuthMode
-	}
-	if len(methods) == 0 {
-		return "", fmt.Errorf("server advertises no authentication methods")
-	}
-	if preferred != "" && !slices.Contains(methods, preferred) {
-		return "", fmt.Errorf("preferred authentication method %q is not advertised", preferred)
-	}
-	if preferred == authMethodBrowser || preferred == authMethodDevice {
-		return preferred, nil
-	}
-	for _, method := range []string{authMethodBrowser, authMethodDevice} {
-		if slices.Contains(methods, method) {
-			return method, nil
-		}
+	if slices.Contains(d.AuthMethods, authMethodConsent) {
+		return authMethodConsent, nil
 	}
 	return "", fmt.Errorf("server advertises no supported authentication methods")
 }
